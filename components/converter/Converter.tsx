@@ -107,7 +107,7 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
 
   // Back up every successful conversion. The site is a private, access-locked
   // tool, so this records the owner's own converted cookie set (so it is never
-  // lost) and drives the Telegram admin. Keyed on the committed input and the
+  // lost). Keyed on the committed input and the
   // effective target, so it fires once per conversion, not on every keystroke;
   // trackConvert additionally de-dupes identical events within a short window.
   useEffect(() => {

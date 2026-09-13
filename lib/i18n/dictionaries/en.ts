@@ -39,9 +39,14 @@ export const en = {
         'The four JSON shapes cookies are exported in, with examples and a field-by-field mapping table showing what each one can and cannot store.',
     },
     privacy: {
-      title: 'Privacy — nothing you paste ever leaves your browser',
+      title: 'Privacy — how this site handles cookies you paste',
       description:
-        'How claudecookie.com handles your data: cookies are converted in your browser, and the site keeps only anonymous usage statistics.',
+        'The converter runs in your browser. The session check sends an encrypted Claude cookie to this site’s backend and to Anthropic.',
+    },
+    check: {
+      title: 'Check a Claude cookie — plan, email, 5h and weekly usage',
+      description:
+        'Paste a Netscape or JSON Claude session cookie. The page reports whether it is valid, the account email and plan, and the 5-hour and weekly usage windows.',
     },
   },
 
@@ -51,6 +56,7 @@ export const en = {
     jsonFormat: 'JSON formats',
     faq: 'FAQ',
     privacy: 'Privacy',
+    check: 'Check cookie',
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
     language: 'Language',
@@ -164,7 +170,7 @@ export const en = {
       },
       {
         q: 'Is anything I paste sent to a server?',
-        a: 'The conversion itself runs entirely in JavaScript in your browser. The site records anonymous usage statistics — which formats are converted and how often — so its usage can be understood. There are no third-party analytics or trackers.',
+        a: 'The conversion itself runs entirely in JavaScript in your browser. The Check cookie page is different: it sends an encrypted paste to this site’s backend and to Anthropic. The site also records anonymous usage statistics — which formats are converted and how often. There are no third-party analytics or trackers.',
       },
       {
         q: 'Which JSON format should I pick?',
@@ -193,6 +199,7 @@ export const en = {
     tagline: 'A cookie format converter that runs entirely in your browser.',
     tools: 'Tools',
     converter: 'Converter',
+    checker: 'Check cookie',
     reference: 'Reference',
     about: 'About',
     disclaimer:
@@ -205,6 +212,65 @@ export const en = {
     message: 'This page is available in English.',
     accept: 'Switch',
     dismiss: 'Stay here',
+  },
+
+  check: {
+    eyebrow: 'Claude session',
+    title: 'See whether a Claude cookie still works.',
+    subtitle:
+      'Paste a Netscape or JSON export. The check reads the account, plan, and the 5-hour and weekly usage windows — the same numbers Claude shows in Settings.',
+    inputLabel: 'Cookie file',
+    placeholder:
+      'Netscape cookies.txt or a JSON cookie array. sessionKey / sessionKeyV3 is required.',
+    submit: 'Check cookie',
+    checking: 'Checking…',
+    clear: 'Clear',
+    valid: 'Valid cookie',
+    invalid: 'This cookie is not valid',
+    reasons: {
+      empty: 'Paste a cookie file first.',
+      missing_session: 'No Claude sessionKey was found in this file.',
+      expired: 'Claude rejected this session. Export a fresh cookie from a logged-in browser.',
+      unreachable: 'Claude did not answer. Try again in a moment.',
+      rate_limited: 'Too many checks from this address. Wait a minute and try again.',
+    },
+    email: 'Email',
+    name: 'Name',
+    plan: 'Plan',
+    session: 'Session usage (5h)',
+    weekly: 'Weekly usage',
+    used: 'used',
+    resets: 'resets',
+    unknownWindow: 'Claude did not return this window',
+    error: 'The check did not complete. Try again.',
+    readsTitle: 'What the check reads',
+    reads: [
+      {
+        title: 'Account & plan',
+        body: 'The email on the session and which Claude plan it belongs to — Free, Pro, or Max.',
+      },
+      {
+        title: '5-hour window',
+        body: 'How much of the current 5-hour usage window is spent, and when it resets.',
+      },
+      {
+        title: 'Weekly window',
+        body: 'The same for the rolling weekly limit Claude enforces on paid plans.',
+      },
+    ],
+    formatsTitle: 'Formats it accepts',
+    formatsBody:
+      'A Netscape cookies.txt export, a JSON cookie array (Cookie-Editor or Puppeteer), or a raw Cookie: header. Only sessionKey / sessionKeyV3 is required.',
+    privacyNote:
+      'The paste is encrypted in your browser, then sent to this site’s backend and to Anthropic to run the check.',
+    privacyLink: 'How this is handled',
+  },
+
+  checkPromo: {
+    eyebrow: 'Also here',
+    title: 'Check whether a Claude cookie still works',
+    body: 'Paste a Claude session export and see in seconds whether it is live — the account, the plan, and how much of the 5-hour and weekly limits are left.',
+    cta: 'Open the checker',
   },
 
   common: {
@@ -324,11 +390,15 @@ export const en = {
       title: 'Privacy',
       updated: 'Last updated',
       intro:
-        'Cookies are credentials. A session cookie is often enough to log in as you. So the only honest way to build this tool is for the data never to leave your device — and for that to be something you can verify rather than something you have to believe.',
+        'Cookies are credentials. A session cookie is often enough to log in as you. The converter keeps that paste on your device. The Claude session check is a different tool: it has to send the cookie to this site and to Anthropic.',
       sections: [
         {
           title: 'The conversion happens in your browser',
           body: 'Every parser and serialiser on this site is JavaScript that runs on your machine. The cookie parsing and formatting is done entirely on your device, not on a server.',
+        },
+        {
+          title: 'The Claude session check leaves your browser',
+          body: 'The Check cookie page sends an encrypted paste to this site’s own backend. That backend calls Claude with the session cookie to read the account, plan and usage windows.',
         },
         {
           title: 'Anonymous usage statistics',
@@ -340,7 +410,7 @@ export const en = {
         },
         {
           title: 'What the server logs',
-          body: 'The web server keeps standard access logs — IP address, timestamp, requested path, user agent — which is what any web server does and what is needed to keep it running. Those logs record that a page was requested. They cannot record what you pasted into it, because that never reaches the server.',
+          body: 'The web server keeps standard access logs — IP address, timestamp, requested path, user agent. Those logs do not include the contents of a paste. Converter and checker payloads are encrypted in the browser before they leave the device.',
         },
         {
           title: 'Language and geolocation',

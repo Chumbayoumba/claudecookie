@@ -7,7 +7,7 @@ import { Accordion } from '@/components/ui/Accordion'
 import { Reveal } from '@/components/ui/Reveal'
 import { ALL_FORMATS } from '@/lib/cookies'
 import { getDictionary } from '@/lib/i18n'
-import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
+import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
 import { buildHomeJsonLd, buildMetadata } from '@/lib/seo'
 
 export function generateStaticParams() {
@@ -56,6 +56,36 @@ export default async function HomePage({ params }: PageProps) {
 
       <section className="ant-container pb-16" aria-label={dict.hero.eyebrow}>
         <Converter locale={locale} dict={dict} />
+      </section>
+
+      {/* Checker promo */}
+      <section className="ant-container pb-4">
+        <Reveal>
+          <div className="flex flex-col gap-6 overflow-hidden rounded-large border border-line bg-bg-secondary p-8 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="font-sans text-detail-xs font-semibold tracking-[0.12em] text-clay uppercase">
+                {dict.checkPromo.eyebrow}
+              </p>
+              <h2 className="mt-4 text-display-xs sm:text-display-s">{dict.checkPromo.title}</h2>
+              <p className="mt-4 text-paragraph-xs text-ink-secondary">{dict.checkPromo.body}</p>
+            </div>
+            <a
+              href={localePath(locale, '/check')}
+              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-main border border-transparent bg-clay px-6 font-sans text-detail-l font-medium whitespace-nowrap text-clay-contrast transition-colors duration-200 ease-ant hover:bg-clay-hover"
+            >
+              {dict.checkPromo.cta}
+              <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
+                <path
+                  d="M6 3.5 10.5 8 6 12.5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </a>
+          </div>
+        </Reveal>
       </section>
 
       {/* How it works */}

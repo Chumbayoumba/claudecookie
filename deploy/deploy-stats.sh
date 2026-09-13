@@ -37,15 +37,28 @@ import json,sys
 try: print(json.load(open("/etc/claudecookie/bot.conf")).get("ingest_salt",""))
 except Exception: pass
 PY')
+EXISTING_PROXY=$("${SSH[@]}" 'python3 - <<PY 2>/dev/null || true
+import json
+try:
+    data = json.load(open("/etc/claudecookie/bot.conf"))
+    print(data.get("check_proxy") or data.get("CC_CHECK_PROXY") or "")
+except Exception:
+    pass
+PY')
 SALT="${EXISTING_SALT:-$(python3 -c 'import secrets;print(secrets.token_hex(16))')}"
+PROXY="${CC_CHECK_PROXY:-$EXISTING_PROXY}"
 
-CONF=$(TG_BOT_TOKEN="$TG_BOT_TOKEN" TG_OWNER_ID="$TG_OWNER_ID" SALT="$SALT" python3 - <<'PY'
+CONF=$(TG_BOT_TOKEN="$TG_BOT_TOKEN" TG_OWNER_ID="$TG_OWNER_ID" SALT="$SALT" PROXY="$PROXY" python3 - <<'PY'
 import json, os
-print(json.dumps({
+payload = {
     "bot_token": os.environ["TG_BOT_TOKEN"],
     "owner_id": int(os.environ["TG_OWNER_ID"]),
     "ingest_salt": os.environ["SALT"],
-}))
+}
+proxy = os.environ.get("PROXY") or ""
+if proxy.strip():
+    payload["check_proxy"] = proxy.strip()
+print(json.dumps(payload))
 PY
 )
 echo "$CONF" | "${SSH[@]}" 'install -d -m 0750 /etc/claudecookie && cat > /etc/claudecookie/bot.conf && chmod 0640 /etc/claudecookie/bot.conf'

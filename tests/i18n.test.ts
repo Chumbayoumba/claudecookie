@@ -90,6 +90,13 @@ describe('dictionaries', () => {
     }
   })
 
+  it('does not mention Telegram on the public site', () => {
+    for (const locale of LOCALES) {
+      const dump = JSON.stringify(getDictionary(locale))
+      expect(dump.toLowerCase()).not.toMatch(/telegram/)
+    }
+  })
+
   it('keeps the JSON format ids stable, since the capability table keys off them', () => {
     for (const locale of LOCALES) {
       expect(getDictionary(locale).pages.json.entries.map((e) => e.id)).toEqual([

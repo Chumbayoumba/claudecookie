@@ -1,8 +1,12 @@
 # claudecookie.com
 
 A cookie format converter: Netscape `cookies.txt` to JSON and back, in five
-formats, with the input format detected automatically. Everything runs in the
-browser — nothing is uploaded.
+formats, with the input format detected automatically. Conversion runs in the
+browser — that paste is not uploaded.
+
+A separate **Check cookie** page (`/check`, `/ru/check`, `/zh/check`) is
+different. The browser seals the paste and posts it to this site’s own backend,
+which calls `claude.ai` for the account, plan and usage windows.
 
 Available in English (`/`), Russian (`/ru/`) and Simplified Chinese (`/zh/`).
 
@@ -25,10 +29,11 @@ lib/cookies/        The conversion core. Pure TypeScript, no React.
 lib/i18n/           Typed dictionaries. en.ts is the source of truth; the
                     Dictionary type is derived from it, so a missing key in
                     ru.ts or zh.ts fails `tsc`.
-components/         converter/, layout/, ui/, seo/
-app/[locale]/       Four routes per locale, statically generated
+components/         converter/, check/, layout/, ui/, seo/
+app/[locale]/       Five routes per locale, statically generated
+server/             ingest on :8787 (`/e`, `/check`, `/box`) and the Telegram bot
 deploy/             nginx config, server setup, release script
-tests/              82 tests: the conversion core, plus i18n consistency
+tests/              conversion core, i18n consistency, Python session-check mocks
 ```
 
 The core is deliberately framework-free and sits behind one function:
@@ -59,6 +64,12 @@ pnpm dev          # http://localhost:3000/en
 pnpm test         # conversion core
 pnpm typecheck
 pnpm build        # -> out/
+
+# Session check (optional locally). Next rewrites POST /check and /e to :8787.
+# Point the SQLite file at a writable path; without TG_* the JSON still returns.
+$env:CC_STATS_DB = "$env:TEMP\claudecookie-stats.db"
+python server/stats_service.py
+# then open http://localhost:3000/en/check/
 ```
 
 Note that `/` only serves English on the real server, where nginx maps it to
@@ -100,6 +111,9 @@ creates an unprivileged `deploy` account that may reload nginx and nothing else.
 Then, from your machine:
 
 ```bash
+./deploy/deploy-stats.sh   # ingest + Telegram bot, including POST /check
+# install deploy/nginx.conf as root if the site file on the server is older
+# (the deploy user may only nginx -t and reload)
 ./deploy/deploy.sh
 ```
 
@@ -113,21 +127,20 @@ ssh deploy@<host> 'ln -sfnT /var/www/claudecookie/releases/<older> /var/www/clau
 
 ## Privacy
 
-The site sends a Content-Security-Policy with `connect-src 'none'`. The browser
-will not let the page make a network request of any kind, which makes "your
-cookies never leave your device" checkable in DevTools rather than a claim you
-have to take on faith. There is no analytics and no third-party script. The only
-cookie set is `cclang`.
+The converter and the session check have different trust models. Conversion is
+still JavaScript in the browser. The check page has to leave the device: the
+browser encrypts the paste and posts to same-origin `POST /check` (no trailing
+slash — that path is the API; `/check/` is the static page). The Python ingest
+service opens the box and calls `claude.ai`.
 
-If you add analytics later, that directive has to be relaxed — at which point
-the claim on `/privacy` stops being true and needs rewording.
+The site sends a Content-Security-Policy with `connect-src 'self'`. Same-origin
+beacons and the session check are allowed; third-party fetches are not. There is
+no third-party script. The only cookie the site itself sets is `cclang`.
 
-One consequence worth knowing about: `connect-src 'none'` also blocks Next's own
-client-side router, which navigates by fetching an RSC payload. Rather than
-relax the directive, navigation uses plain `<a>` elements and full page loads.
-Across four static pages with shared JS already cached that costs nothing
-measurable, but it does mean `next/link` must not be reintroduced — it would log
-a CSP violation on every page and silently fall back to a hard navigation anyway.
+One consequence: Next’s client-side router fetches an RSC payload. Navigation
+uses plain `<a>` elements and full page loads so that behaviour stays obvious.
+`next/link` must not be reintroduced — it would log a CSP noise on every page
+and silently fall back to a hard navigation anyway.
 
 ## Not affiliated with Anthropic
 

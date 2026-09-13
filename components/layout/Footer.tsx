@@ -13,7 +13,10 @@ export function Footer({ locale, dict }: FooterProps) {
   const columns = [
     {
       title: dict.footer.tools,
-      links: [{ href: localePath(locale, '/'), label: dict.footer.converter }],
+      links: [
+        { href: localePath(locale, '/'), label: dict.footer.converter },
+        { href: localePath(locale, '/check'), label: dict.footer.checker },
+      ],
     },
     {
       title: dict.footer.reference,

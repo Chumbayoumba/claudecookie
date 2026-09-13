@@ -12,13 +12,11 @@ import { cn } from '@/lib/utils/cn'
 /*
  * Navigation uses plain anchors, not next/link.
  *
- * The site ships `connect-src 'none'`, which is the whole basis of the privacy
- * claim on /privacy - the browser refuses to let this page make any network
- * request at all. Next's client-side router works by fetching an RSC payload
- * (`.../index.txt?_rsc=...`), so every <Link> would trip that directive, log a
- * CSP violation and then fall back to a full page load anyway.
+ * The site ships `connect-src 'self'`. Same-origin beacons and the session
+ * check are allowed; third-party fetches are not. Next's client-side router
+ * still works by fetching an RSC payload, so navigation uses plain anchors.
  *
- * Across four static pages whose shared JS is already cached, a browser
+ * Across the static pages whose shared JS is already cached, a browser
  * navigation costs nothing measurable. Keeping the directive airtight is worth
  * more than soft navigation here.
  */
@@ -54,6 +52,7 @@ export function Header({ locale, dict }: HeaderProps) {
   }, [menuOpen])
 
   const links = [
+    { href: localePath(locale, '/check'), label: dict.nav.check },
     { href: localePath(locale, '/formats/netscape-cookies-txt'), label: dict.nav.netscapeFormat },
     { href: localePath(locale, '/formats/json-cookies'), label: dict.nav.jsonFormat },
     { href: localePath(locale, '/privacy'), label: dict.nav.privacy },

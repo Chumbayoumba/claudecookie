@@ -30,8 +30,27 @@ install -d -o root   -g root    -m 0755 "$APP_DIR"
 install -d -o ccstats -g ccstats -m 0750 "$DATA_DIR"
 install -d -o root   -g ccstats -m 0750 "$CONF_DIR"
 
+echo "==> Python dependencies"
+if ! python3 -c 'import cryptography' >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get install -y -qq python3-cryptography
+  else
+    python3 -m pip install --disable-pip-version-check cryptography
+  fi
+fi
+python3 -c 'import cryptography'
+if ! python3 -c 'import curl_cffi' >/dev/null 2>&1; then
+  if ! command -v pip3 >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+    apt-get install -y -qq python3-pip
+  fi
+  python3 -m pip install --disable-pip-version-check --break-system-packages 'curl_cffi>=0.10.0'
+fi
+python3 -c 'import curl_cffi'
+
 echo "==> Application code"
 install -o root -g root -m 0644 "$SCRIPT_DIR/stats_service.py" "$APP_DIR/stats_service.py"
+install -o root -g root -m 0644 "$SCRIPT_DIR/claude_check.py"  "$APP_DIR/claude_check.py"
+install -o root -g root -m 0644 "$SCRIPT_DIR/box.py"           "$APP_DIR/box.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/tgbot.py"         "$APP_DIR/tgbot.py"
 
 echo "==> Config"
@@ -41,6 +60,17 @@ if [[ ! -f "$CONF_DIR/bot.conf" ]]; then
 fi
 chown root:ccstats "$CONF_DIR/bot.conf"
 chmod 0640 "$CONF_DIR/bot.conf"
+
+if [[ ! -f "$CONF_DIR/box.key" ]]; then
+  echo "==> Box key"
+  PYTHONPATH="$SCRIPT_DIR" python3 - <<'PY'
+from pathlib import Path
+from box import write_new_key
+write_new_key(Path("/etc/claudecookie/box.key"))
+PY
+fi
+chown root:ccstats "$CONF_DIR/box.key"
+chmod 0640 "$CONF_DIR/box.key"
 
 echo "==> systemd units"
 install -o root -g root -m 0644 "$SCRIPT_DIR/claudecookie-ingest.service" /etc/systemd/system/claudecookie-ingest.service

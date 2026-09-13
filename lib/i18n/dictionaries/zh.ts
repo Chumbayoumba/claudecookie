@@ -18,9 +18,14 @@ export const zh: Dictionary = {
         '导出 Cookie 常见的四种 JSON 结构，附示例与字段对照表，说明每种格式能保存什么、会丢失什么。',
     },
     privacy: {
-      title: '隐私 — 你粘贴的内容不会离开浏览器',
+      title: '隐私 — 本站如何处理你粘贴的 Cookie',
       description:
-        'claudecookie.com 如何处理你的数据：Cookie 在你的浏览器中转换，站点只保留匿名的使用统计。',
+        '转换器在浏览器本地运行。Claude 会话检查会把加密后的 Cookie 发到本站后端和 Anthropic。',
+    },
+    check: {
+      title: '检查 Claude Cookie — 套餐、邮箱、5 小时与每周用量',
+      description:
+        '粘贴 Netscape 或 JSON 格式的 Claude 会话 Cookie。页面会显示它是否有效、账号邮箱与套餐，以及 5 小时和每周用量窗口。',
     },
   },
 
@@ -30,6 +35,7 @@ export const zh: Dictionary = {
     jsonFormat: 'JSON 格式',
     faq: '常见问题',
     privacy: '隐私',
+    check: '检查 Cookie',
     openMenu: '打开菜单',
     closeMenu: '关闭菜单',
     language: '语言',
@@ -151,7 +157,7 @@ export const zh: Dictionary = {
       },
       {
         q: '我粘贴的内容会被发送到服务器吗？',
-        a: '转换本身完全由浏览器中的 JavaScript 完成。站点会记录匿名的使用统计 — 转换了哪些格式、频率如何 — 以便了解使用情况。没有任何第三方统计或追踪器。',
+        a: '转换本身完全由浏览器中的 JavaScript 完成。「检查 Cookie」页不同：它会把加密后的内容发到本站后端和 Anthropic。站点还会记录匿名使用统计 — 转换了哪些格式、频率如何。没有任何第三方统计或追踪器。'
       },
       {
         q: '该选哪种 JSON 格式？',
@@ -180,6 +186,7 @@ export const zh: Dictionary = {
     tagline: '一个完全在浏览器本地运行的 Cookie 格式转换器。',
     tools: '工具',
     converter: '转换器',
+    checker: '检查 Cookie',
     reference: '参考',
     about: '关于',
     disclaimer:
@@ -192,6 +199,63 @@ export const zh: Dictionary = {
     message: '本页面提供中文版本。',
     accept: '切换',
     dismiss: '留在此页',
+  },
+
+  check: {
+    eyebrow: 'Claude 会话',
+    title: '看看这条 Claude Cookie 是否还能用。',
+    subtitle:
+      '粘贴 Netscape 或 JSON 导出。检查会读取账号、套餐，以及 5 小时和每周用量窗口——和 Claude 设置里看到的数字一样。',
+    inputLabel: 'Cookie 文件',
+    placeholder: 'Netscape cookies.txt 或 JSON 数组。需要 sessionKey / sessionKeyV3。',
+    submit: '检查 Cookie',
+    checking: '正在检查…',
+    clear: '清空',
+    valid: 'Cookie 有效',
+    invalid: '这条 Cookie 无效',
+    reasons: {
+      empty: '请先粘贴 Cookie 文件。',
+      missing_session: '文件里没有 Claude 的 sessionKey。',
+      expired: 'Claude 拒绝了这个会话。请从已登录的浏览器重新导出。',
+      unreachable: 'Claude 没有应答。请稍后再试。',
+      rate_limited: '这个地址检查太频繁。请等一分钟再试。',
+    },
+    email: '邮箱',
+    name: '名称',
+    plan: '套餐',
+    session: '会话用量（5 小时）',
+    weekly: '每周用量',
+    used: '已用',
+    resets: '重置于',
+    unknownWindow: 'Claude 没有返回这个窗口',
+    error: '检查没有完成。请再试一次。',
+    readsTitle: '这个检查会读取什么',
+    reads: [
+      {
+        title: '账号与套餐',
+        body: '会话对应的邮箱，以及它属于哪个 Claude 套餐——Free、Pro 或 Max。',
+      },
+      {
+        title: '5 小时窗口',
+        body: '当前 5 小时用量窗口已用掉多少，以及何时重置。',
+      },
+      {
+        title: '每周窗口',
+        body: '付费套餐上 Claude 采用的滚动每周限额，同样如此。',
+      },
+    ],
+    formatsTitle: '支持的格式',
+    formatsBody:
+      'Netscape cookies.txt 导出、JSON Cookie 数组（Cookie-Editor 或 Puppeteer），或原始的 Cookie: 请求头。只需要 sessionKey / sessionKeyV3。',
+    privacyNote: '粘贴内容会在浏览器中加密，再发到本站后端和 Anthropic 以完成检查。',
+    privacyLink: '如何处理这些数据',
+  },
+
+  checkPromo: {
+    eyebrow: '这里还有',
+    title: '检查 Claude Cookie 是否仍然有效',
+    body: '粘贴 Claude 会话导出，几秒内就能看到它是否还在有效——账号、套餐，以及 5 小时和每周限额还剩多少。',
+    cta: '打开检查器',
   },
 
   common: {
@@ -311,11 +375,15 @@ export const zh: Dictionary = {
       title: '隐私',
       updated: '最后更新',
       intro:
-        'Cookie 就是凭证。一条会话 Cookie 往往就足以让别人以你的身份登录。因此做这个工具唯一诚实的方式，就是让数据根本不离开你的设备 — 而且这一点应当可以被验证，而不是只能选择相信。',
+        'Cookie 就是凭证。一条会话 Cookie 往往就足以让别人以你的身份登录。转换器把粘贴内容留在你的设备上。Claude 会话检查是另一套工具：它必须把 Cookie 发到本站和 Anthropic。',
       sections: [
         {
           title: '转换在你的浏览器里完成',
-          body: '本站所有解析与序列化代码都是运行在你机器上的 JavaScript。当你粘贴 Cookie 并点击「转换」时，不会发出任何请求。这里没有 API，没有服务端处理，也没有任务队列。',
+          body: '本站所有解析与序列化代码都是运行在你机器上的 JavaScript。Cookie 的解析和格式化完全在你的设备上完成，而不是在服务器上。'
+        },
+        {
+          title: 'Claude 会话检查会离开浏览器',
+          body: '「检查 Cookie」页会把加密后的内容发到本站自己的后端。后端用这条会话 Cookie 向 Claude 读取账号、套餐和用量窗口。',
         },
         {
           title: '匿名使用统计',
@@ -327,7 +395,7 @@ export const zh: Dictionary = {
         },
         {
           title: '服务器会记录什么',
-          body: 'Web 服务器会保留标准访问日志 — IP 地址、时间戳、请求路径、User-Agent。任何 Web 服务器都会这么做，运维也离不开它。这些日志能记录页面被请求过，却无法记录你在页面里粘贴了什么，因为那些内容根本不会到达服务器。',
+          body: 'Web 服务器会保留标准访问日志 — IP 地址、时间戳、请求路径、User-Agent。日志里不包含粘贴内容。转换器和检查页的请求体会在离开浏览器前加密。',
         },
         {
           title: '语言与地理定位',

