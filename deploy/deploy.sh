@@ -79,7 +79,7 @@ echo "==> Verifying on the origin (over SSH via 127.0.0.1)"
 # The origin is now locked to the RTK edge (and localhost), so a direct curl
 # from this machine's IP would get 403. Verify from the server itself, where the
 # loopback peer is trusted by the origin-lock.
-"${SSH[@]}" bash -s <<REMOTE
+ssh "${SSH_OPTS[@]}" "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<REMOTE
 for path in / /ru/ /zh/ /check/ /ru/check/ /zh/check/ /formats/netscape-cookies-txt/ /sitemap.xml; do
   code="\$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 \\
     --resolve "$DEPLOY_DOMAIN:443:127.0.0.1" "https://$DEPLOY_DOMAIN\$path" || echo 000)"
