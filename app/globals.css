@@ -1,0 +1,318 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens lifted from anthropic.com's production stylesheet, so the
+ * palette, type scale, radii and easing match the real thing rather than an
+ * approximation of it.
+ */
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  /* --- Raw swatches ------------------------------------------------------ */
+  --swatch-ivory-light: #faf9f5;
+  --swatch-ivory-medium: #f0eee6;
+  --swatch-ivory-dark: #e8e6dc;
+  --swatch-slate-dark: #141413;
+  --swatch-slate-medium: #3d3d3a;
+  --swatch-slate-light: #5e5d59;
+  --swatch-cloud-light: #d1cfc5;
+  --swatch-cloud-medium: #b0aea5;
+  --swatch-cloud-dark: #87867f;
+  --swatch-clay: #d97757;
+  --swatch-accent: #c6613f;
+  --swatch-oat: #e3dacc;
+  --swatch-kraft: #d4a27f;
+  --swatch-manilla: #ebdbbc;
+  --swatch-olive: #788c5d;
+  --swatch-sky: #6a9bcc;
+  --swatch-cactus: #bcd1ca;
+  --swatch-fig: #c46686;
+  --swatch-coral: #ebcece;
+  --swatch-heather: #cbcadb;
+  --swatch-white: #ffffff;
+
+  /* --- Semantic tokens, light theme -------------------------------------- */
+  --ant-bg: var(--swatch-ivory-light);
+  --ant-bg-secondary: var(--swatch-ivory-medium);
+  --ant-bg-tertiary: var(--swatch-ivory-dark);
+  --ant-surface: var(--swatch-white);
+  --ant-surface-hover: var(--swatch-ivory-medium);
+  --ant-text: var(--swatch-slate-dark);
+  --ant-text-secondary: var(--swatch-slate-light);
+  --ant-text-faint: var(--swatch-cloud-dark);
+  --ant-border: #1414131a;
+  --ant-border-strong: #14141333;
+  --ant-accent: var(--swatch-clay);
+  --ant-accent-hover: var(--swatch-accent);
+  --ant-accent-contrast: var(--swatch-ivory-light);
+  --ant-ok: var(--swatch-olive);
+  --ant-info: var(--swatch-sky);
+  --ant-warn: var(--swatch-kraft);
+  --ant-error: var(--swatch-fig);
+  /* Inverted button: dark chip on a light page. */
+  --ant-invert-bg: var(--swatch-slate-dark);
+  --ant-invert-text: var(--swatch-ivory-light);
+  --ant-invert-bg-hover: var(--swatch-slate-medium);
+  --ant-noise-opacity: 0.035;
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --ant-bg: var(--swatch-slate-dark);
+  --ant-bg-secondary: #1c1c1a;
+  --ant-bg-tertiary: #262623;
+  --ant-surface: #1c1c1a;
+  --ant-surface-hover: #262623;
+  --ant-text: var(--swatch-ivory-light);
+  --ant-text-secondary: var(--swatch-cloud-medium);
+  --ant-text-faint: var(--swatch-cloud-dark);
+  --ant-border: #faf9f51a;
+  --ant-border-strong: #faf9f533;
+  --ant-accent: var(--swatch-clay);
+  --ant-accent-hover: #e08a6d;
+  --ant-accent-contrast: var(--swatch-slate-dark);
+  --ant-invert-bg: var(--swatch-ivory-light);
+  --ant-invert-text: var(--swatch-slate-dark);
+  --ant-invert-bg-hover: var(--swatch-ivory-dark);
+  --ant-noise-opacity: 0.05;
+
+  color-scheme: dark;
+}
+
+/*
+ * Two theme blocks, deliberately.
+ *
+ * `@theme inline` does NOT emit its variables to `:root` - it substitutes the
+ * value straight into the generated utilities. That is exactly what the colours
+ * need, so `bg-bg` follows whichever `--ant-*` the active theme defines.
+ *
+ * But anything referenced as a raw `var()` elsewhere in this file, or inside an
+ * arbitrary value like `max-w-[var(--container-prose)]`, has to be a real
+ * custom property. Those live in the plain `@theme` block below.
+ */
+@theme inline {
+  --color-bg: var(--ant-bg);
+  --color-bg-secondary: var(--ant-bg-secondary);
+  --color-bg-tertiary: var(--ant-bg-tertiary);
+  --color-surface: var(--ant-surface);
+  --color-surface-hover: var(--ant-surface-hover);
+  --color-ink: var(--ant-text);
+  --color-ink-secondary: var(--ant-text-secondary);
+  --color-ink-faint: var(--ant-text-faint);
+  --color-line: var(--ant-border);
+  --color-line-strong: var(--ant-border-strong);
+  --color-clay: var(--ant-accent);
+  --color-clay-hover: var(--ant-accent-hover);
+  --color-clay-contrast: var(--ant-accent-contrast);
+  --color-ok: var(--ant-ok);
+  --color-info: var(--ant-info);
+  --color-warn: var(--ant-warn);
+  --color-error: var(--ant-error);
+  --color-invert: var(--ant-invert-bg);
+  --color-invert-ink: var(--ant-invert-text);
+  --color-invert-hover: var(--ant-invert-bg-hover);
+}
+
+@theme {
+  /* Fonts. The `--font-*-display` names come from next/font, which declares
+     them on <html>, so they resolve at :root where these are defined too.
+     Chinese falls back to the system CJK stack rather than pulling a
+     multi-megabyte webfont, which is the norm for Simplified Chinese sites. */
+  --font-sans: var(--font-inter), 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, -apple-system, Arial, sans-serif;
+  --font-serif: var(--font-serif-display), 'Songti SC', 'Noto Serif CJK SC',
+    'Source Han Serif SC', Georgia, serif;
+  --font-mono: var(--font-jetbrains), 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* Type scale, straight from the source. */
+  --text-detail-xs: 0.75rem;
+  --text-detail-s: 0.875rem;
+  --text-detail-m: 1rem;
+  --text-detail-l: 1.125rem;
+  --text-detail-xl: 1.25rem;
+  --text-paragraph-xs: 1rem;
+  --text-paragraph-s: 1.125rem;
+  --text-paragraph-m: 1.25rem;
+  --text-paragraph-l: 1.5rem;
+  --text-display-xs: 1.25rem;
+  --text-display-s: 1.5rem;
+  --text-display-m: 2rem;
+  --text-display-l: 3rem;
+  --text-display-xl: 4rem;
+  --text-display-xxl: 4.5rem;
+  --text-display-xxxl: 6rem;
+
+  --radius-small: 0.25rem;
+  --radius-main: 0.5rem;
+  --radius-large: 1rem;
+  --radius-round: 100vw;
+
+  /* The single easing curve used across anthropic.com. */
+  --ease-ant: cubic-bezier(0.165, 0.84, 0.44, 1);
+
+  --container-site: 75rem;
+  --container-prose: 56.25rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--ant-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Anchored headings clear the sticky header. */
+    scroll-padding-top: 6rem;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--ant-bg);
+    color: var(--ant-text);
+    /* Anthropic's signature choice: body copy is set in the serif. */
+    font-family: var(--font-serif);
+    font-size: 1.125rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s var(--ease-ant), color 0.3s var(--ease-ant);
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    text-wrap: balance;
+  }
+
+  /* UI chrome is set in the sans, matching how the real site splits them. */
+  button, input, textarea, select, label, nav, th {
+    font-family: var(--font-sans);
+  }
+
+  code, pre, kbd, samp {
+    font-family: var(--font-mono);
+    font-feature-settings: 'liga' 0;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--ant-accent) 28%, transparent);
+    color: var(--ant-text);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ant-accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* Textareas stay at 16px on mobile so iOS Safari does not zoom on focus. */
+  @media (max-width: 640px) {
+    textarea, input, select {
+      font-size: 16px;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * Paper grain. anthropic.com lays a faint noise texture over the flat ivory;
+   * it is what stops the large empty areas from reading as sterile.
+   */
+  .ant-noise::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: var(--ant-noise-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .ant-container {
+    width: 100%;
+    max-width: var(--container-site);
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  @media (min-width: 768px) {
+    .ant-container {
+      padding-inline: 2rem;
+    }
+  }
+
+  /* Underline that grows from the left, used on footer and prose links. */
+  .ant-link {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-size: 0% 1px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    transition: background-size 0.3s var(--ease-ant), color 0.2s var(--ease-ant);
+  }
+
+  .ant-link:hover {
+    background-size: 100% 1px;
+  }
+
+  /*
+   * Cheap JSON colouring for the read-only output panel. Real syntax
+   * highlighting would mean shipping a tokenizer for a box nobody edits.
+   */
+  .ant-json .tok-key { color: var(--ant-accent); }
+  .ant-json .tok-str { color: var(--ant-ok); }
+  .ant-json .tok-num { color: var(--ant-info); }
+  .ant-json .tok-bool { color: var(--swatch-kraft); }
+  .ant-json .tok-punc { color: var(--ant-text-faint); }
+  .ant-netscape .tok-comment { color: var(--ant-text-faint); font-style: italic; }
+  .ant-netscape .tok-field { color: var(--ant-text); }
+  .ant-netscape .tok-flag { color: var(--ant-info); }
+  .ant-netscape .tok-num { color: var(--swatch-kraft); }
+}
+
+@layer utilities {
+  .ant-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ant-border-strong) transparent;
+  }
+
+  .ant-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .ant-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--ant-border-strong);
+    border-radius: 100vw;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  .ant-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Respect the system setting: no transforms, no transitions, no smooth scroll. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

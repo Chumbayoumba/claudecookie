@@ -1,0 +1,29 @@
+[Unit]
+Description=claudecookie ingest service
+After=network.target
+
+[Service]
+Type=simple
+User=ccstats
+Group=ccstats
+ExecStart=/usr/bin/python3 /opt/claudecookie/stats_service.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/claudecookie
+ReadOnlyPaths=/etc/claudecookie
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
