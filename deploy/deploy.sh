@@ -20,7 +20,9 @@ if [[ ! -f .env ]]; then
 fi
 
 # shellcheck disable=SC1091
-set -a; source .env; set +a
+# Tolerate a Windows/CRLF .env: strip trailing \r so values don't carry a stray
+# carriage return into ssh options, rsync or the remote path.
+set -a; source <(sed 's/\r$//' .env); set +a
 
 : "${DEPLOY_HOST:?set DEPLOY_HOST in .env}"
 : "${DEPLOY_USER:?set DEPLOY_USER in .env}"
