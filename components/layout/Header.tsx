@@ -52,9 +52,9 @@ export function Header({ locale, dict }: HeaderProps) {
   }, [menuOpen])
 
   const links = [
+    { href: localePath(locale, '/'), label: dict.nav.converter },
     { href: localePath(locale, '/check'), label: dict.nav.check },
-    { href: localePath(locale, '/formats/netscape-cookies-txt'), label: dict.nav.netscapeFormat },
-    { href: localePath(locale, '/formats/json-cookies'), label: dict.nav.jsonFormat },
+    { href: localePath(locale, '/credential'), label: dict.nav.getCredential },
     { href: localePath(locale, '/privacy'), label: dict.nav.privacy },
   ]
 

@@ -53,7 +53,7 @@ export default async function CheckPage({ params }: PageProps) {
         backLabel={dict.common.backToConverter}
       />
 
-      <section className="ant-container py-12 lg:py-16">
+      <section className="ant-container pt-8 pb-16 lg:pt-10 lg:pb-24">
         <CheckIntro locale={locale} dict={dict} />
       </section>
     </>

@@ -27,6 +27,11 @@ export const ru: Dictionary = {
       description:
         'Вставьте Netscape или JSON с сессией Claude. Страница покажет, жива ли кука, почту и план аккаунта, а также окна использования за 5 часов и за неделю.',
     },
+    credential: {
+      title: 'Получить credential-файл — из куки Claude в учётные данные',
+      description:
+        'Превратите сессионную куку Claude в credential-файл для Claude Code и API. В разработке.',
+    },
   },
 
   nav: {
@@ -36,6 +41,8 @@ export const ru: Dictionary = {
     faq: 'Вопросы',
     privacy: 'Приватность',
     check: 'Проверка куки',
+    converter: 'Конвертер кук',
+    getCredential: 'Получить credential-файл',
     openMenu: 'Открыть меню',
     closeMenu: 'Закрыть меню',
     language: 'Язык',
@@ -415,6 +422,29 @@ export const ru: Dictionary = {
       disclaimerTitle: 'Сайт не связан с Anthropic',
       disclaimerBody:
         'Это независимый открытый инструмент. Он не создан Anthropic PBC, не одобрен ею и никак с ней не связан. Claude — товарный знак Anthropic PBC, здесь он упоминается только как отсылка.',
+    },
+
+    credential: {
+      title: 'Получить credential-файл',
+      badge: 'В разработке',
+      intro:
+        'Превратите сессию Claude в credential-файл — тот самый, что читают Claude Code и API для входа. Вставляете куку — получаете готовый файл, без ручной возни с токенами.',
+      leadTitle: 'Как это будет работать',
+      steps: [
+        {
+          title: 'Вставьте куку',
+          body: 'Вставьте экспорт сессии Claude — и credential-файл соберётся из неё автоматически.',
+        },
+        {
+          title: 'Или войдите',
+          body: 'Если из куки собрать не выйдет — авторизуетесь по ссылке входа, и сервер сам создаст файл.',
+        },
+        {
+          title: 'Скачайте и используйте',
+          body: 'Сохраните credential-файл и укажите его в Claude Code или API. Ничего не нужно копировать вручную.',
+        },
+      ],
+      note: 'Этот инструмент ещё в разработке. Конвертер и проверка куки уже работают.',
     },
   },
 }

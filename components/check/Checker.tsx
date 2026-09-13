@@ -8,6 +8,7 @@ import type { CheckResult, InvalidReason } from '@/lib/check/types'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { Button } from '@/components/ui/Button'
+import { Pill } from '@/components/ui/Pill'
 import { cn } from '@/lib/utils/cn'
 
 const EASE = [0.165, 0.84, 0.44, 1] as const
@@ -36,7 +37,13 @@ export function Checker({ locale, dict }: CheckerProps) {
     setFailed(false)
     setBusy(true)
     try {
-      const box = await sealJson({ cookie: value, l: locale })
+      let tz: string | undefined
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      } catch {
+        tz = undefined
+      }
+      const box = await sealJson({ cookie: value, l: locale, tz })
       const response = await fetch('/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -53,15 +60,9 @@ export function Checker({ locale, dict }: CheckerProps) {
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <motion.form
-        onSubmit={onSubmit}
-        className="flex flex-col gap-4"
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: EASE }}
-      >
-        <div className="rounded-large border border-line bg-surface">
+    <div className="flex flex-col gap-6">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <div className="overflow-hidden rounded-large border border-line bg-surface">
           <div className="border-b border-line px-4 py-3">
             <label
               htmlFor="claude-cookie"
@@ -80,9 +81,9 @@ export function Checker({ locale, dict }: CheckerProps) {
             autoCorrect="off"
             autoCapitalize="off"
             data-gramm="false"
-            rows={12}
+            rows={10}
             className={cn(
-              'ant-scroll min-h-[220px] w-full resize-y bg-transparent px-4 py-4',
+              'ant-scroll block h-[min(38vh,18rem)] w-full resize-y bg-transparent px-4 py-4',
               'font-mono text-detail-s leading-relaxed text-ink',
               'placeholder:text-ink-faint focus:outline-none',
             )}
@@ -106,17 +107,17 @@ export function Checker({ locale, dict }: CheckerProps) {
             {dict.check.clear}
           </Button>
         </div>
-      </motion.form>
+      </form>
 
       <AnimatePresence initial={false}>
         {failed ? (
           <motion.p
             key="failed"
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.28, ease: EASE }}
-            className="rounded-large border border-line bg-surface px-5 py-4 font-sans text-detail-m text-error"
+            className="rounded-large border border-error/30 bg-error/5 px-5 py-4 font-sans text-detail-m text-error"
           >
             {dict.check.error}
           </motion.p>
@@ -143,11 +144,9 @@ export function Checker({ locale, dict }: CheckerProps) {
 function CheckReport({ result, dict }: { result: CheckResult; dict: Dictionary }) {
   if (!result.ok) {
     return (
-      <section className="rounded-large border border-line bg-surface p-6">
-        <p className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-error uppercase">
-          {dict.check.invalid}
-        </p>
-        <p className="mt-3 text-paragraph-xs text-ink-secondary">
+      <section className="rounded-large border border-error/25 bg-error/5 p-6 sm:p-8">
+        <Pill tone="error">{dict.check.invalid}</Pill>
+        <p className="mt-4 max-w-[52ch] text-paragraph-xs text-ink-secondary">
           {reasonText(dict, result.invalidReason)}
         </p>
       </section>
@@ -155,33 +154,57 @@ function CheckReport({ result, dict }: { result: CheckResult; dict: Dictionary }
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-large border border-line bg-surface p-6">
-        <p className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ok uppercase">
-          {dict.check.valid}
-        </p>
-        <dl className="mt-5 grid gap-5 sm:grid-cols-3">
-          <div>
-            <dt className="font-sans text-detail-xs text-ink-faint">{dict.check.email}</dt>
-            <dd className="mt-1 break-all font-sans text-detail-l text-ink">
+    <div className="flex flex-col gap-4">
+      <section className="rounded-large border border-line bg-surface p-6 sm:p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Pill tone="ok">
+            <CheckIcon />
+            {dict.check.valid}
+          </Pill>
+          {result.planLabel ? <Pill tone="accent">{result.planLabel}</Pill> : null}
+        </div>
+
+        <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="font-sans text-detail-xs tracking-[0.06em] text-ink-faint uppercase">
+              {dict.check.email}
+            </dt>
+            <dd
+              className="mt-1.5 truncate font-sans text-detail-xl text-ink"
+              title={result.email || undefined}
+            >
               {result.email || '—'}
             </dd>
           </div>
-          <div>
-            <dt className="font-sans text-detail-xs text-ink-faint">{dict.check.plan}</dt>
-            <dd className="mt-1 font-sans text-detail-l text-ink">{result.planLabel || '—'}</dd>
-          </div>
-          <div>
-            <dt className="font-sans text-detail-xs text-ink-faint">{dict.check.name}</dt>
-            <dd className="mt-1 font-sans text-detail-l text-ink">{result.name || '—'}</dd>
+          <div className="min-w-0">
+            <dt className="font-sans text-detail-xs tracking-[0.06em] text-ink-faint uppercase">
+              {dict.check.name}
+            </dt>
+            <dd className="mt-1.5 truncate font-sans text-detail-xl text-ink">
+              {result.name || '—'}
+            </dd>
           </div>
         </dl>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <UsageCard title={dict.check.session} window={result.session} dict={dict} />
         <UsageCard title={dict.check.weekly} window={result.weekly} dict={dict} />
       </div>
     </div>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="size-3.5" fill="none" aria-hidden>
+      <path
+        d="M3.5 8.5 6.5 11.5 12.5 5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }

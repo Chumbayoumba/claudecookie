@@ -1,11 +1,7 @@
-'use client'
-
-import { motion } from 'motion/react'
 import { Checker } from './Checker'
+import { Reveal } from '@/components/ui/Reveal'
 import { localePath, type Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
-
-const EASE = [0.165, 0.84, 0.44, 1] as const
 
 interface CheckIntroProps {
   locale: Locale
@@ -14,45 +10,32 @@ interface CheckIntroProps {
 
 export function CheckIntro({ locale, dict }: CheckIntroProps) {
   return (
-    <div className="mt-8 max-w-3xl">
-      <motion.p
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: EASE }}
-        className="font-sans text-detail-xs font-semibold tracking-[0.12em] text-clay uppercase"
-      >
-        {dict.check.eyebrow}
-      </motion.p>
-
-      <div className="mt-8">
+    <div className="flex flex-col gap-16 lg:gap-24">
+      <div className="max-w-3xl">
         <Checker locale={locale} dict={dict} />
       </div>
 
-      <motion.section
-        initial={{ opacity: 0, y: 14 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-80px' }}
-        transition={{ duration: 0.5, ease: EASE }}
-        className="mt-16"
-      >
+      <Reveal>
         <h2 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
           {dict.check.readsTitle}
         </h2>
         <div className="mt-6 grid gap-px overflow-hidden rounded-large border border-line bg-line sm:grid-cols-3">
           {dict.check.reads.map((item) => (
-            <div key={item.title} className="h-full bg-surface p-5">
+            <div key={item.title} className="flex h-full flex-col bg-bg p-6">
               <h3 className="font-sans text-detail-l font-medium text-ink">{item.title}</h3>
               <p className="mt-2 text-paragraph-xs text-ink-secondary">{item.body}</p>
             </div>
           ))}
         </div>
 
-        <div className="mt-6 rounded-large border border-line bg-bg-secondary p-5">
+        <div className="mt-6 rounded-large border border-line bg-bg-secondary p-6">
           <h3 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
             {dict.check.formatsTitle}
           </h3>
-          <p className="mt-3 text-paragraph-xs text-ink-secondary">{dict.check.formatsBody}</p>
-          <p className="mt-4 text-detail-s text-ink-faint">
+          <p className="mt-3 max-w-[70ch] text-paragraph-xs text-ink-secondary">
+            {dict.check.formatsBody}
+          </p>
+          <p className="mt-4 max-w-[70ch] text-detail-s text-ink-faint">
             {dict.check.privacyNote}{' '}
             <a
               href={localePath(locale, '/privacy')}
@@ -63,7 +46,7 @@ export function CheckIntro({ locale, dict }: CheckIntroProps) {
             .
           </p>
         </div>
-      </motion.section>
+      </Reveal>
     </div>
   )
 }

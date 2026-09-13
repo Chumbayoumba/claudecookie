@@ -27,6 +27,11 @@ export const zh: Dictionary = {
       description:
         '粘贴 Netscape 或 JSON 格式的 Claude 会话 Cookie。页面会显示它是否有效、账号邮箱与套餐，以及 5 小时和每周用量窗口。',
     },
+    credential: {
+      title: '获取凭证文件 — 把 Claude Cookie 变成凭证',
+      description:
+        '把 Claude 会话 Cookie 变成 Claude Code 和 API 使用的凭证文件。开发中。',
+    },
   },
 
   nav: {
@@ -36,6 +41,8 @@ export const zh: Dictionary = {
     faq: '常见问题',
     privacy: '隐私',
     check: '检查 Cookie',
+    converter: 'Cookie 转换器',
+    getCredential: '获取凭证文件',
     openMenu: '打开菜单',
     closeMenu: '关闭菜单',
     language: '语言',
@@ -409,6 +416,29 @@ export const zh: Dictionary = {
       disclaimerTitle: '本站与 Anthropic 无关',
       disclaimerBody:
         '这是一个独立的开放工具，并非由 Anthropic PBC 制作，未获其认可，也与其没有任何关联。Claude 是 Anthropic PBC 的商标，此处仅用于指代。',
+    },
+
+    credential: {
+      title: '获取凭证文件',
+      badge: '开发中',
+      intro:
+        '把 Claude 会话变成凭证文件 —— Claude Code 和 API 用它来登录。粘贴 Cookie，就能拿到现成的文件，无需手动处理令牌。',
+      leadTitle: '将来如何使用',
+      steps: [
+        {
+          title: '粘贴 Cookie',
+          body: '粘贴 Claude 会话导出，凭证文件会据此自动生成。',
+        },
+        {
+          title: '或者登录',
+          body: '如果无法从 Cookie 生成，就通过登录链接授权，由服务器为你生成文件。',
+        },
+        {
+          title: '下载并使用',
+          body: '保存凭证文件，在 Claude Code 或 API 中指向它，无需手动复制。',
+        },
+      ],
+      note: '这个工具仍在开发中。转换器和 Cookie 检查现在已经可以使用。',
     },
   },
 }

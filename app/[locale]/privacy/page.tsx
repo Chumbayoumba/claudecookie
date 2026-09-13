@@ -57,13 +57,13 @@ export default async function PrivacyPage({ params }: PageProps) {
         backLabel={dict.common.backToConverter}
       />
 
-      <div className="ant-container py-16 lg:py-20">
+      <div className="ant-container pt-6 pb-16 lg:pt-8 lg:pb-24">
         <div className="max-w-[var(--container-prose)]">
           <p className="font-sans text-detail-xs text-ink-faint">
             {page.updated}: <time dateTime={LAST_UPDATED}>{LAST_UPDATED}</time>
           </p>
 
-          <div className="mt-10 flex flex-col gap-12">
+          <div className="mt-10 flex flex-col gap-10">
             {page.sections.map((section, i) => (
               <Reveal key={section.title} delay={i * 0.03}>
                 <section className="border-t border-line pt-8">

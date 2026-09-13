@@ -48,6 +48,11 @@ export const en = {
       description:
         'Paste a Netscape or JSON Claude session cookie. The page reports whether it is valid, the account email and plan, and the 5-hour and weekly usage windows.',
     },
+    credential: {
+      title: 'Get a credential file — turn a Claude cookie into credentials',
+      description:
+        'Turn a Claude session cookie into a credentials file for Claude Code and the API. In development.',
+    },
   },
 
   nav: {
@@ -57,6 +62,8 @@ export const en = {
     faq: 'FAQ',
     privacy: 'Privacy',
     check: 'Check cookie',
+    converter: 'Cookie converter',
+    getCredential: 'Get credential file',
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
     language: 'Language',
@@ -424,6 +431,29 @@ export const en = {
       disclaimerTitle: 'Not affiliated with Anthropic',
       disclaimerBody:
         'This is an independent open tool. It is not made by, endorsed by, or connected to Anthropic PBC in any way. Claude is a trademark of Anthropic PBC, used here only to refer to it.',
+    },
+
+    credential: {
+      title: 'Get a credential file',
+      badge: 'In development',
+      intro:
+        'Turn a Claude session into a credentials file — the kind Claude Code and the API read to sign in. Paste a cookie and get one back, with no manual token wrangling.',
+      leadTitle: 'How it will work',
+      steps: [
+        {
+          title: 'Paste your cookie',
+          body: 'Drop a Claude session export and the credentials file is built from it automatically.',
+        },
+        {
+          title: 'Or sign in',
+          body: 'If a cookie cannot be converted, you authorize through a sign-in link and the server mints the file for you.',
+        },
+        {
+          title: 'Download and use',
+          body: 'Save the credentials file and point Claude Code or the API at it. Nothing to copy by hand.',
+        },
+      ],
+      note: 'This tool is still being built. The converter and the cookie check are ready to use now.',
     },
   },
 }

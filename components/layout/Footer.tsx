@@ -16,6 +16,7 @@ export function Footer({ locale, dict }: FooterProps) {
       links: [
         { href: localePath(locale, '/'), label: dict.footer.converter },
         { href: localePath(locale, '/check'), label: dict.footer.checker },
+        { href: localePath(locale, '/credential'), label: dict.nav.getCredential },
       ],
     },
     {

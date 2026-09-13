@@ -9,6 +9,7 @@ export const dynamic = 'force-static'
 const ROUTES = [
   { path: '/', priority: 1, changeFrequency: 'monthly' as const },
   { path: '/check', priority: 0.7, changeFrequency: 'monthly' as const },
+  { path: '/credential', priority: 0.5, changeFrequency: 'monthly' as const },
   { path: '/formats/netscape-cookies-txt', priority: 0.8, changeFrequency: 'yearly' as const },
   { path: '/formats/json-cookies', priority: 0.8, changeFrequency: 'yearly' as const },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' as const },
