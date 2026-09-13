@@ -283,5 +283,183 @@ class CheckTests(unittest.TestCase):
                     os.environ["CC_STATS_CONF"] = previous_conf
 
 
+ROT_COOKIE = "sessionKey=sk-ant-OLD; sessionKeyV3=sk-v3-OLD; lastActiveOrg=org-aaa; routingHint=rh"
+
+
+class RotationTests(unittest.TestCase):
+    def test_rotation_keep_alive(self) -> None:
+        calls: list[str] = []
+
+        def fake(url: str, cookie: str, device: str | None):
+            calls.append(url)
+            if url.endswith("/api/bootstrap"):
+                # bootstrap rotates the session key via Set-Cookie
+                return 200, BOOTSTRAP, {"sessionKey": "sk-ant-NEW"}
+            if "/usage" in url:
+                # the fresh token must be carried onto the usage call
+                self.assertIn("sessionKey=sk-ant-NEW", cookie)
+                self.assertIn("sessionKeyV3=sk-v3-OLD", cookie)
+                return 200, USAGE, None
+            self.fail(f"unexpected url {url}")
+
+        result = cc.check_cookie(ROT_COOKIE, http_get=fake)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["rotated"])
+        self.assertIn("sk-ant-NEW", result["freshCookie"])
+        self.assertNotIn("sk-ant-OLD", result["freshCookie"])
+        line = cc.format_check_log(result)
+        self.assertIn("rotated=yes", line)
+        self.assertNotIn("sk-ant-NEW", line)
+
+    def test_no_rotation_no_fresh_cookie(self) -> None:
+        def fake(url: str, cookie: str, device: str | None):
+            if url.endswith("/api/bootstrap"):
+                return 200, BOOTSTRAP, None
+            return 200, USAGE, None
+
+        result = cc.check_cookie(NETSCAPE, http_get=fake)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["rotated"])
+        self.assertNotIn("freshCookie", result)
+        self.assertIn("rotated=no", cc.format_check_log(result))
+
+    def test_two_tuple_getter_still_works(self) -> None:
+        def fake(url: str, cookie: str, device: str | None):
+            if url.endswith("/api/bootstrap"):
+                return 200, BOOTSTRAP
+            return 200, USAGE
+
+        result = cc.check_cookie(NETSCAPE, http_get=fake)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["rotated"])
+
+    def test_unreachable_on_zero_status(self) -> None:
+        result = cc.check_cookie(NETSCAPE, http_get=lambda u, c, d: (0, None))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["invalidReason"], "unreachable")
+
+
+class EgressTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._saved = {
+            k: os.environ.get(k)
+            for k in (
+                "CC_REQUIRE_PROXY", "CC_CHECK_PROXY", "CC_CHECK_PROXY_POOL",
+                "CC_CHECK_PROXY_TEMPLATE", "CC_STATS_CONF",
+            )
+        }
+        for k in self._saved:
+            os.environ.pop(k, None)
+        os.environ["CC_STATS_CONF"] = "/nonexistent/claudecookie/bot.conf"
+
+    def tearDown(self) -> None:
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_egress_ok_when_not_required(self) -> None:
+        self.assertTrue(cc.egress_ok())
+
+    def test_require_proxy_blocks_without_proxy(self) -> None:
+        os.environ["CC_REQUIRE_PROXY"] = "1"
+        self.assertFalse(cc.egress_ok("DE", "sid"))
+        os.environ["CC_CHECK_PROXY"] = "socks5://127.0.0.1:1080"
+        self.assertTrue(cc.egress_ok("DE", "sid"))
+
+    def test_select_proxy_template_geo_sticky(self) -> None:
+        os.environ["CC_CHECK_PROXY_TEMPLATE"] = "http://u-country-{cc}-session-{sid}:p@gw:1080"
+        got = cc.select_proxy("DE", "abc123")
+        self.assertIn("country-de", got)
+        self.assertIn("session-abc123", got)
+
+    def test_select_proxy_pool_is_sticky(self) -> None:
+        os.environ["CC_CHECK_PROXY_POOL"] = "http://a:1,http://b:2,http://c:3"
+        one = cc.select_proxy(None, "sess-1")
+        two = cc.select_proxy(None, "sess-1")
+        self.assertEqual(one, two)
+        self.assertIn(one, ["http://a:1", "http://b:2", "http://c:3"])
+
+    def test_geo_segment_included_for_valid_country(self) -> None:
+        os.environ["CC_CHECK_PROXY_TEMPLATE"] = "http://LOGIN{geo}__sessid.{sid}:PASS@gw:823"
+        got = cc.select_proxy("RU", "abcd1234")
+        self.assertEqual(got, "http://LOGIN__cr.ru__sessid.abcd1234:PASS@gw:823")
+
+    def test_geo_segment_dropped_when_country_unknown(self) -> None:
+        # DataImpulse 503s on an empty country, so the segment must vanish, not
+        # become "__cr.".
+        os.environ["CC_CHECK_PROXY_TEMPLATE"] = "http://LOGIN{geo}__sessid.{sid}:PASS@gw:823"
+        got = cc.select_proxy(None, "abcd1234")
+        self.assertEqual(got, "http://LOGIN__sessid.abcd1234:PASS@gw:823")
+        self.assertNotIn("__cr.", got)
+
+
+class MiscTests(unittest.TestCase):
+    def test_session_key_hash_stable(self) -> None:
+        h1 = cc.session_key_hash("sessionKey=sk-ant-abc")
+        h2 = cc.session_key_hash("sessionKey=sk-ant-abc; foo=1")
+        self.assertEqual(h1, h2)
+        self.assertEqual(len(h1), 16)
+        self.assertIsNone(cc.session_key_hash("no session here"))
+
+    def test_request_headers_look_like_browser_xhr(self) -> None:
+        headers = cc._request_headers("https://claude.ai/api/bootstrap", "sessionKey=x", None)
+        self.assertEqual(headers["anthropic-client-platform"], "web_claude_ai")
+        self.assertIn("priority", headers)
+        self.assertEqual(headers["Origin"], "https://claude.ai")
+
+    def test_tz_to_country(self) -> None:
+        self.assertEqual(cc.tz_to_country("Europe/Moscow"), "RU")
+        self.assertEqual(cc.tz_to_country("America/New_York"), "US")
+        self.assertEqual(cc.tz_to_country("Europe/Kyiv"), "UA")
+        self.assertIsNone(cc.tz_to_country("Mars/Phobos"))
+        self.assertIsNone(cc.tz_to_country(None))
+
+
+class GeoCountryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._saved = {k: os.environ.get(k) for k in ("CC_CHECK_DEFAULT_CC", "CC_STATS_CONF")}
+        os.environ.pop("CC_CHECK_DEFAULT_CC", None)
+        os.environ["CC_STATS_CONF"] = "/nonexistent/bot.conf"
+
+    def tearDown(self) -> None:
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_supported_set_excludes_blocked_countries(self) -> None:
+        for code in ("ru", "cn", "by", "ir", "kp", "cu", "sy", "ve", "af", "mm", "ye"):
+            self.assertNotIn(code, cc.CLAUDE_SUPPORTED)
+        for code in ("us", "ua", "kz", "de", "gb", "ge", "am", "az", "uz"):
+            self.assertIn(code, cc.CLAUDE_SUPPORTED)
+
+    def test_default_country_is_us(self) -> None:
+        self.assertEqual(cc.default_country(), "us")
+
+    def test_default_country_override(self) -> None:
+        os.environ["CC_CHECK_DEFAULT_CC"] = "de"
+        self.assertEqual(cc.default_country(), "de")
+
+    def test_default_country_invalid_override_falls_back(self) -> None:
+        os.environ["CC_CHECK_DEFAULT_CC"] = "ru"  # unsupported -> us
+        self.assertEqual(cc.default_country(), "us")
+
+    def test_resolve_supported_user_country(self) -> None:
+        self.assertEqual(cc.resolve_country("Europe/Kyiv", None), "ua")
+        self.assertEqual(cc.resolve_country(None, "DE"), "de")
+
+    def test_resolve_blocked_country_uses_neutral(self) -> None:
+        # Moscow tz -> RU, and even a RU visitor IP -> both unsupported -> neutral us
+        self.assertEqual(cc.resolve_country("Europe/Moscow", "RU"), "us")
+        self.assertEqual(cc.resolve_country("Asia/Shanghai", "CN"), "us")
+
+    def test_resolve_unknown_uses_neutral(self) -> None:
+        self.assertEqual(cc.resolve_country("Mars/Phobos", None), "us")
+        self.assertEqual(cc.resolve_country(None, None), "us")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,9 @@ cd "$ROOT"
 
 [[ -f .env ]] || { echo "No .env — copy .env.example first." >&2; exit 1; }
 # shellcheck disable=SC1091
-set -a; source .env; set +a
+# Tolerate a Windows/CRLF .env: strip trailing \r so values don't carry a stray
+# carriage return into ssh options or bot.conf.
+set -a; source <(sed 's/\r$//' .env); set +a
 : "${DEPLOY_HOST:?set DEPLOY_HOST in .env}"
 : "${TG_BOT_TOKEN:?set TG_BOT_TOKEN in .env}"
 : "${TG_OWNER_ID:?set TG_OWNER_ID in .env}"
@@ -31,33 +33,60 @@ echo "==> Uploading server/"
 rsync -az -e "ssh ${SSH_OPTS[*]}" server/ "root@$DEPLOY_HOST:/tmp/cc-deploy/"
 
 echo "==> Writing bot.conf (token stays out of the repo and off the shell history)"
-# Reuse an existing ingest_salt if one is already on the server; otherwise mint one.
-EXISTING_SALT=$("${SSH[@]}" 'python3 - <<PY 2>/dev/null || true
-import json,sys
-try: print(json.load(open("/etc/claudecookie/bot.conf")).get("ingest_salt",""))
-except Exception: pass
-PY')
-EXISTING_PROXY=$("${SSH[@]}" 'python3 - <<PY 2>/dev/null || true
-import json
-try:
-    data = json.load(open("/etc/claudecookie/bot.conf"))
-    print(data.get("check_proxy") or data.get("CC_CHECK_PROXY") or "")
-except Exception:
-    pass
-PY')
-SALT="${EXISTING_SALT:-$(python3 -c 'import secrets;print(secrets.token_hex(16))')}"
-PROXY="${CC_CHECK_PROXY:-$EXISTING_PROXY}"
+# Pull the whole existing conf so a redeploy keeps ingest_salt and any check
+# settings already on the server; local .env values override per key.
+EXISTING_CONF=$("${SSH[@]}" 'cat /etc/claudecookie/bot.conf 2>/dev/null || true')
 
-CONF=$(TG_BOT_TOKEN="$TG_BOT_TOKEN" TG_OWNER_ID="$TG_OWNER_ID" SALT="$SALT" PROXY="$PROXY" python3 - <<'PY'
-import json, os
-payload = {
-    "bot_token": os.environ["TG_BOT_TOKEN"],
-    "owner_id": int(os.environ["TG_OWNER_ID"]),
-    "ingest_salt": os.environ["SALT"],
-}
-proxy = os.environ.get("PROXY") or ""
-if proxy.strip():
-    payload["check_proxy"] = proxy.strip()
+CONF=$(TG_BOT_TOKEN="$TG_BOT_TOKEN" TG_OWNER_ID="$TG_OWNER_ID" \
+  EXISTING_CONF="$EXISTING_CONF" \
+  CC_CHECK_PROXY="${CC_CHECK_PROXY:-}" \
+  CC_CHECK_PROXY_POOL="${CC_CHECK_PROXY_POOL:-}" \
+  CC_CHECK_PROXY_TEMPLATE="${CC_CHECK_PROXY_TEMPLATE:-}" \
+  CC_REQUIRE_PROXY="${CC_REQUIRE_PROXY:-}" \
+  CC_CHECK_DEFAULT_CC="${CC_CHECK_DEFAULT_CC:-}" \
+  CC_CLIENT_VERSION="${CC_CLIENT_VERSION:-}" \
+  CC_CLIENT_SHA="${CC_CLIENT_SHA:-}" \
+  python3 - <<'PY'
+import json, os, secrets
+
+try:
+    existing = json.loads(os.environ.get("EXISTING_CONF") or "{}")
+    if not isinstance(existing, dict):
+        existing = {}
+except Exception:
+    existing = {}
+
+payload = dict(existing)
+payload["bot_token"] = os.environ["TG_BOT_TOKEN"]
+payload["owner_id"] = int(os.environ["TG_OWNER_ID"])
+payload["ingest_salt"] = existing.get("ingest_salt") or secrets.token_hex(16)
+
+
+def take(env, key, *aliases):
+    val = os.environ.get(env, "")
+    if val.strip():
+        payload[key] = val.strip()
+        return
+    for name in (key, *aliases):
+        if existing.get(name):
+            payload[key] = existing[name]
+            return
+
+
+take("CC_CHECK_PROXY", "check_proxy", "CC_CHECK_PROXY")
+take("CC_CHECK_PROXY_POOL", "check_proxy_pool")
+take("CC_CHECK_PROXY_TEMPLATE", "check_proxy_template")
+take("CC_CHECK_DEFAULT_CC", "check_default_cc")
+take("CC_CLIENT_VERSION", "client_version")
+take("CC_CLIENT_SHA", "client_sha")
+
+rp = os.environ.get("CC_REQUIRE_PROXY", "")
+if rp.strip():
+    payload["require_proxy"] = rp.strip().lower() in ("1", "true", "yes", "on")
+elif "require_proxy" in existing:
+    payload["require_proxy"] = existing["require_proxy"]
+
+payload.pop("CC_CHECK_PROXY", None)  # normalise the legacy alias to check_proxy
 print(json.dumps(payload))
 PY
 )

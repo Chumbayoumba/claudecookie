@@ -7,12 +7,11 @@ Live session values are never written to logs.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -24,15 +23,19 @@ OPTIONAL_NAMES = (
     "sessionKeyV3LC",
     "routingHint",
 )
+# Names we read back out of Set-Cookie to detect and keep-alive a rotated session.
+SET_COOKIE_NAMES = ("sessionKey", "sessionKeyV3", "routingHint", "lastActiveOrg")
+
 BOOTSTRAP_URL = "https://claude.ai/api/bootstrap"
 USAGE_PATH = "/api/organizations/{org}/usage?include_utilization=true"
 CHROME_IMPERSONATE = ("chrome150", "chrome146", "chrome136", "chrome131")
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
-)
 
-HttpGet = Callable[[str, str, str | None], tuple[int, Any]]
+CONF_PATH_ENV = "CC_STATS_CONF"
+DEFAULT_CONF_PATH = "/etc/claudecookie/bot.conf"
+
+# Getter contract: (url, cookie, device_id) -> (status, body[, set_cookie]).
+# set_cookie, when present, is a {name: value} dict parsed from the response.
+HttpGet = Callable[..., tuple]
 _working_impersonate: str | None = None
 
 
@@ -111,23 +114,213 @@ def cookie_header(fields: dict[str, str]) -> str:
     return "; ".join(pairs)
 
 
-def configured_proxy() -> str | None:
-    raw = (os.environ.get("CC_CHECK_PROXY") or "").strip()
-    if raw:
-        return raw
-    path = os.environ.get("CC_STATS_CONF", "/etc/claudecookie/bot.conf")
+def _read_conf() -> dict:
+    path = os.environ.get(CONF_PATH_ENV, DEFAULT_CONF_PATH)
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, json.JSONDecodeError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _conf_str(name: str, env: str) -> str | None:
+    value = os.environ.get(env)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    value = _read_conf().get(name)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _conf_bool(name: str, env: str) -> bool:
+    value = os.environ.get(env)
+    if value is None:
+        value = _read_conf().get(name)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return False
+
+
+def configured_proxy() -> str | None:
+    raw = (os.environ.get("CC_CHECK_PROXY") or "").strip()
+    if raw:
+        return raw
+    data = _read_conf()
     value = data.get("check_proxy") or data.get("CC_CHECK_PROXY") or ""
     if not isinstance(value, str):
         return None
     value = value.strip()
     return value or None
+
+
+def require_proxy() -> bool:
+    """Safe-mode: when true, never hit Claude without a proxy.
+
+    A valid session arriving from a bare datacenter IP is the biggest reason a
+    cookie gets revoked, so this lets the operator refuse to check at all until a
+    residential proxy/WARP is wired in.
+    """
+    return _conf_bool("require_proxy", "CC_REQUIRE_PROXY")
+
+
+def _proxy_pool() -> list[str]:
+    raw = os.environ.get("CC_CHECK_PROXY_POOL")
+    if raw and raw.strip():
+        return [x.strip() for x in re.split(r"[,\n]", raw) if x.strip()]
+    value = _read_conf().get("check_proxy_pool")
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    if isinstance(value, str) and value.strip():
+        return [x.strip() for x in re.split(r"[,\n]", value) if x.strip()]
+    return []
+
+
+def select_proxy(country: str | None = None, session_id: str | None = None) -> str | None:
+    """Pick the outbound proxy for one check.
+
+    Priority: a geo/sticky template -> a pool (sticky by session hash) -> the
+    single ``check_proxy``. Matching the exit country to where the cookie was
+    logged in and pinning it to the session id keeps the check's IP consistent.
+
+    Template placeholders:
+      ``{sid}``  per-session id (same cookie -> same exit IP).
+      ``{cc}``   raw 2-letter country (may be empty); for providers that put the
+                 country inline and always require it (e.g. IPRoyal password).
+      ``{geo}``  DataImpulse country segment: ``__cr.<cc>`` when the country is a
+                 valid 2-letter code, else empty (DataImpulse 503s on an empty or
+                 unknown country, so we drop the segment and take any-country).
+    """
+    template = _conf_str("check_proxy_template", "CC_CHECK_PROXY_TEMPLATE")
+    if template:
+        cc = (country or "").strip().lower()
+        sid = session_id or "default"
+        geo = f"__cr.{cc}" if len(cc) == 2 and cc.isalpha() else ""
+        try:
+            return template.format(cc=cc, country=cc, sid=sid, session=sid, geo=geo)
+        except (KeyError, IndexError, ValueError):
+            return template
+    pool = _proxy_pool()
+    if pool:
+        if session_id:
+            idx = int(hashlib.sha256(session_id.encode()).hexdigest(), 16) % len(pool)
+        else:
+            idx = 0
+        return pool[idx]
+    return configured_proxy()
+
+
+def egress_ok(country: str | None = None, session_id: str | None = None) -> bool:
+    """False only when safe-mode is on and no proxy can be resolved."""
+    if not require_proxy():
+        return True
+    return bool(select_proxy(country, session_id))
+
+
+# IANA timezone -> ISO country. The browser timezone survives a VPN (a VPN moves
+# the IP, not the OS clock), so it is a better hint for "where did this person log
+# in" than the visitor IP. Misses fall back to the visitor IP country upstream.
+_TZ_COUNTRY = {
+    "Europe/Moscow": "RU", "Europe/Kaliningrad": "RU", "Europe/Samara": "RU",
+    "Asia/Yekaterinburg": "RU", "Asia/Novosibirsk": "RU", "Asia/Krasnoyarsk": "RU",
+    "Asia/Irkutsk": "RU", "Asia/Vladivostok": "RU", "Asia/Omsk": "RU",
+    "Europe/Kyiv": "UA", "Europe/Kiev": "UA", "Europe/Minsk": "BY",
+    "Asia/Almaty": "KZ", "Asia/Aqtobe": "KZ", "Asia/Tashkent": "UZ",
+    "Asia/Baku": "AZ", "Asia/Yerevan": "AM", "Asia/Tbilisi": "GE", "Asia/Bishkek": "KG",
+    "Europe/London": "GB", "Europe/Dublin": "IE", "Europe/Berlin": "DE",
+    "Europe/Paris": "FR", "Europe/Madrid": "ES", "Europe/Rome": "IT",
+    "Europe/Amsterdam": "NL", "Europe/Brussels": "BE", "Europe/Zurich": "CH",
+    "Europe/Vienna": "AT", "Europe/Warsaw": "PL", "Europe/Prague": "CZ",
+    "Europe/Stockholm": "SE", "Europe/Oslo": "NO", "Europe/Copenhagen": "DK",
+    "Europe/Helsinki": "FI", "Europe/Lisbon": "PT", "Europe/Athens": "GR",
+    "Europe/Bucharest": "RO", "Europe/Budapest": "HU", "Europe/Istanbul": "TR",
+    "Europe/Sofia": "BG", "Europe/Belgrade": "RS", "Europe/Zagreb": "HR",
+    "Europe/Bratislava": "SK", "Europe/Ljubljana": "SI", "Europe/Vilnius": "LT",
+    "Europe/Riga": "LV", "Europe/Tallinn": "EE", "Europe/Chisinau": "MD",
+    "America/New_York": "US", "America/Detroit": "US", "America/Chicago": "US",
+    "America/Denver": "US", "America/Phoenix": "US", "America/Los_Angeles": "US",
+    "America/Anchorage": "US", "Pacific/Honolulu": "US",
+    "America/Toronto": "CA", "America/Vancouver": "CA", "America/Edmonton": "CA",
+    "America/Winnipeg": "CA", "America/Mexico_City": "MX", "America/Sao_Paulo": "BR",
+    "America/Argentina/Buenos_Aires": "AR", "America/Buenos_Aires": "AR",
+    "America/Bogota": "CO", "America/Santiago": "CL", "America/Lima": "PE",
+    "Asia/Tokyo": "JP", "Asia/Seoul": "KR", "Asia/Shanghai": "CN",
+    "Asia/Hong_Kong": "HK", "Asia/Taipei": "TW", "Asia/Singapore": "SG",
+    "Asia/Bangkok": "TH", "Asia/Jakarta": "ID", "Asia/Manila": "PH",
+    "Asia/Kuala_Lumpur": "MY", "Asia/Ho_Chi_Minh": "VN", "Asia/Saigon": "VN",
+    "Asia/Kolkata": "IN", "Asia/Calcutta": "IN", "Asia/Karachi": "PK",
+    "Asia/Dhaka": "BD", "Asia/Dubai": "AE", "Asia/Riyadh": "SA",
+    "Asia/Jerusalem": "IL", "Asia/Tel_Aviv": "IL", "Asia/Tehran": "IR", "Asia/Baghdad": "IQ",
+    "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Australia/Brisbane": "AU",
+    "Australia/Perth": "AU", "Pacific/Auckland": "NZ",
+    "Africa/Cairo": "EG", "Africa/Johannesburg": "ZA", "Africa/Lagos": "NG",
+    "Africa/Nairobi": "KE", "Africa/Casablanca": "MA",
+}
+
+
+def tz_to_country(tz: str | None) -> str | None:
+    if not isinstance(tz, str):
+        return None
+    return _TZ_COUNTRY.get(tz.strip())
+
+
+# ISO2 countries where Claude is available (snapshot of anthropic.com/supported-countries,
+# 2026). Claude checks the IP country on every request and a session seen from an
+# UNSUPPORTED country can be revoked outright, so the proxy exit must always be one of
+# these. Notably absent: RU, CN, BY, IR, KP, CU, SY, VE, AF, MM, YE.
+CLAUDE_SUPPORTED = frozenset({
+    "ad", "ae", "ag", "al", "am", "ao", "ar", "at", "au", "az", "ba", "bb", "bd", "be", "bf", "bg",
+    "bh", "bi", "bj", "bn", "bo", "br", "bs", "bt", "bw", "bz", "ca", "cf", "cg", "ch", "ci", "cl",
+    "cm", "co", "cr", "cv", "cy", "cz", "de", "dj", "dk", "dm", "do", "dz", "ec", "ee", "eg", "er",
+    "es", "et", "fi", "fj", "fm", "fr", "ga", "gb", "gd", "ge", "gh", "gm", "gn", "gq", "gr", "gt",
+    "gw", "gy", "hn", "hr", "ht", "hu", "id", "ie", "il", "in", "iq", "is", "it", "jm", "jo", "jp",
+    "ke", "kg", "kh", "ki", "km", "kn", "kr", "kw", "kz", "la", "lb", "lc", "li", "lk", "lr", "ls",
+    "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mg", "mh", "mk", "ml", "mn", "mr", "mt", "mu",
+    "mv", "mw", "mx", "my", "mz", "na", "ne", "ng", "ni", "nl", "no", "np", "nr", "nz", "om", "pa",
+    "pe", "pg", "ph", "pk", "pl", "ps", "pt", "pw", "py", "qa", "ro", "rs", "rw", "sa", "sb", "sc",
+    "sd", "se", "sg", "si", "sk", "sl", "sm", "sn", "so", "sr", "ss", "st", "sv", "sz", "td", "tg",
+    "th", "tj", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "us", "uy", "uz",
+    "va", "vc", "vn", "vu", "ws", "za", "zm", "zw",
+})
+
+
+def default_country() -> str:
+    """The neutral Claude-supported exit country for unknown/unsupported users."""
+    cc = (_conf_str("check_default_cc", "CC_CHECK_DEFAULT_CC") or "us").lower()
+    return cc if cc in CLAUDE_SUPPORTED else "us"
+
+
+def resolve_country(tz: str | None = None, ip_country: str | None = None) -> str:
+    """Pick a Claude-SUPPORTED exit country for the check.
+
+    Take the user's own country (browser timezone first, then visitor IP) only when
+    Claude supports it; otherwise fall back to the neutral default. Never returns an
+    unsupported country (RU/CN/...), because egressing from one can revoke the session.
+    """
+    for candidate in (tz_to_country(tz), ip_country):
+        cc = (candidate or "").strip().lower()
+        if len(cc) == 2 and cc.isalpha() and cc in CLAUDE_SUPPORTED:
+            return cc
+    return default_country()
+
+
+def _client_headers() -> dict[str, str]:
+    """Headers a real claude.ai XHR carries. Platform/priority are stable; the
+    exact client version/sha rotate, so we only send them when the operator has
+    pinned them (from a fresh HAR) to avoid looking anomalous with stale values.
+    """
+    headers = {
+        "anthropic-client-platform": "web_claude_ai",
+        "priority": "u=1, i",
+    }
+    version = _conf_str("client_version", "CC_CLIENT_VERSION")
+    if version:
+        headers["anthropic-client-version"] = version
+    sha = _conf_str("client_sha", "CC_CLIENT_SHA")
+    if sha:
+        headers["anthropic-client-sha"] = sha
+    return headers
 
 
 def _request_headers(url: str, cookie: str, device_id: str | None) -> dict[str, str]:
@@ -144,18 +337,29 @@ def _request_headers(url: str, cookie: str, device_id: str | None) -> dict[str, 
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
     }
+    headers.update(_client_headers())
     if device_id:
         headers["anthropic-device-id"] = device_id
     return headers
 
 
-def default_http_get(url: str, cookie: str, device_id: str | None) -> tuple[int, Any]:
+def default_http_get(
+    url: str,
+    cookie: str,
+    device_id: str | None,
+    *,
+    country: str | None = None,
+    session_id: str | None = None,
+) -> tuple[int, Any, dict | None]:
     headers = _request_headers(url, cookie, device_id)
-    proxy = configured_proxy()
+    proxy = select_proxy(country, session_id)
     try:
         from curl_cffi import requests as cf
     except ImportError:
-        return _urllib_get(url, headers, proxy)
+        # Without a browser TLS fingerprint any request looks like a bot and can
+        # burn the cookie, so refuse the egress instead of falling back to urllib.
+        print("check ERROR curl_cffi unavailable; refusing insecure egress", flush=True)
+        return 0, None, None
     return _curl_cffi_get(cf, url, headers, proxy)
 
 
@@ -165,7 +369,27 @@ def _proxy_map(proxy: str | None) -> dict[str, str] | None:
     return {"http": proxy, "https": proxy}
 
 
-def _curl_cffi_get(cf: Any, url: str, headers: dict[str, str], proxy: str | None) -> tuple[int, Any]:
+def _extract_set_cookie(resp: Any) -> dict[str, str]:
+    out: dict[str, str] = {}
+    try:
+        jar = getattr(resp, "cookies", None)
+        if jar is None:
+            return {}
+        for name in SET_COOKIE_NAMES:
+            try:
+                value = jar.get(name)
+            except Exception:
+                value = None
+            if value:
+                out[name] = str(value)
+    except Exception:
+        return {}
+    return out
+
+
+def _curl_cffi_get(
+    cf: Any, url: str, headers: dict[str, str], proxy: str | None
+) -> tuple[int, Any, dict | None]:
     global _working_impersonate
     names: list[str] = []
     if _working_impersonate:
@@ -188,31 +412,10 @@ def _curl_cffi_get(cf: Any, url: str, headers: dict[str, str], proxy: str | None
             message = str(exc).lower()
             if "impersonat" in message or "not supported" in message:
                 continue
-            return 0, None
+            return 0, None, None
         _working_impersonate = name
-        return resp.status_code, _decode_body(resp.content)
-    return 0, None
-
-
-def _urllib_get(url: str, headers: dict[str, str], proxy: str | None) -> tuple[int, Any]:
-    req = urllib.request.Request(url, method="GET")
-    for key, value in headers.items():
-        req.add_header(key, value)
-    if "User-Agent" not in headers:
-        req.add_header("User-Agent", USER_AGENT)
-    handlers = []
-    proxies = _proxy_map(proxy)
-    if proxies:
-        handlers.append(urllib.request.ProxyHandler(proxies))
-    opener = urllib.request.build_opener(*handlers) if handlers else urllib.request.build_opener()
-    try:
-        with opener.open(req, timeout=20) as resp:
-            return resp.status, _decode_body(resp.read())
-    except urllib.error.HTTPError as exc:
-        raw = exc.read() if exc.fp else b""
-        return exc.code, _decode_body(raw)
-    except Exception:
-        return 0, None
+        return resp.status_code, _decode_body(resp.content), _extract_set_cookie(resp)
+    return 0, None, None
 
 
 def _decode_body(raw: bytes) -> Any:
@@ -541,30 +744,102 @@ def format_check_log(result: dict) -> str:
         outcome = "valid"
     else:
         outcome = str(result.get("invalidReason") or "invalid")
-    return f"check {outcome} statuses={statuses} paths={paths} ms={ms}"
+    rotated = "yes" if result.get("rotated") else "no"
+    return f"check {outcome} statuses={statuses} paths={paths} rotated={rotated} ms={ms}"
 
 
-def check_cookie(raw: str, http_get: HttpGet | None = None) -> dict:
+def session_key_hash(raw: str) -> str | None:
+    """Stable per-session id (never the raw key) for locking, caching and sticky proxying."""
+    try:
+        fields = extract_fields(raw)
+    except CookieParseError:
+        return None
+    key = fields.get("sessionKey") or fields.get("sessionKeyV3")
+    if not key:
+        return None
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def _merge_refresh(refresh: dict, set_cookie: dict | None, original: dict) -> None:
+    if not set_cookie:
+        return
+    for name, value in set_cookie.items():
+        if value and name in SET_COOKIE_NAMES and value != original.get(name):
+            refresh[name] = value
+
+
+def _apply_refresh(raw: str, original: dict, refresh: dict) -> str | None:
+    """Return the paste with rotated session tokens swapped in, preserving format.
+
+    Only the long session tokens are rewritten (by value substitution, which works
+    for JSON / Netscape / header pastes alike); short optional cookies are left be.
+    """
+    out = raw
+    changed = False
+    for name in SESSION_NAMES:
+        new_value = refresh.get(name)
+        old_value = original.get(name)
+        if (
+            new_value
+            and old_value
+            and len(old_value) >= 6
+            and old_value != new_value
+            and old_value in out
+        ):
+            out = out.replace(old_value, new_value)
+            changed = True
+    return out if changed else None
+
+
+def check_cookie(
+    raw: str,
+    http_get: HttpGet | None = None,
+    *,
+    country: str | None = None,
+    session_id: str | None = None,
+) -> dict:
     started = time.monotonic()
     probes: list[dict[str, Any]] = []
-    getter = http_get or default_http_get
+    if http_get is None:
+        def getter(url: str, cookie: str, device: str | None):
+            return default_http_get(
+                url, cookie, device, country=country, session_id=session_id
+            )
+    else:
+        getter = http_get
+
+    def call(url: str, cookie: str, device: str | None) -> tuple[int, Any, dict | None]:
+        res = getter(url, cookie, device)
+        if isinstance(res, tuple) and len(res) >= 3:
+            return res[0], res[1], res[2]
+        status, body = res
+        return status, body, None
+
     try:
         fields = extract_fields(raw)
     except CookieParseError as exc:
         return _reject(str(exc) or "missing_session", probes, started)
 
+    original_fields = dict(fields)
+    refresh: dict[str, str] = {}
     header = cookie_header(fields)
     device = fields.get("anthropic-device-id")
     org_hint = fields.get("lastActiveOrg")
 
-    status, body = getter(BOOTSTRAP_URL, header, device)
+    status, body, set_cookie = call(BOOTSTRAP_URL, header, device)
     probes.append({"path": "bootstrap", "status": status})
+    _merge_refresh(refresh, set_cookie, original_fields)
     if status in {401, 403}:
         return _reject("expired", probes, started)
     if status != 200 or body is None:
         return _reject("unreachable", probes, started)
     if not is_authenticated_payload(body):
         return _reject("expired", probes, started)
+
+    # Keep-alive: if the session rotated on this call, carry the fresh token onward.
+    if refresh:
+        fields.update(refresh)
+        header = cookie_header(fields)
 
     blobs: list[Any] = [body]
     windows: dict[str, dict] = {}
@@ -575,8 +850,12 @@ def check_cookie(raw: str, http_get: HttpGet | None = None) -> dict:
         org = org_hint or (org_ids_from(*blobs)[0] if org_ids_from(*blobs) else None)
         if org:
             usage_url = "https://claude.ai" + USAGE_PATH.format(org=org)
-            status, usage = getter(usage_url, header, device)
+            status, usage, set_cookie = call(usage_url, header, device)
             probes.append({"path": "usage", "status": status})
+            _merge_refresh(refresh, set_cookie, original_fields)
+            if refresh:
+                fields.update(refresh)
+                header = cookie_header(fields)
             if status == 200 and usage is not None:
                 blobs.append(usage)
                 for kind, window in pick_windows(usage).items():
@@ -616,7 +895,8 @@ def check_cookie(raw: str, http_get: HttpGet | None = None) -> dict:
     }
     extras = {key: value for key, value in extras.items() if value}
 
-    return {
+    rotated = any(cookie_name in SESSION_NAMES for cookie_name in refresh)
+    result = {
         "ok": True,
         "email": email,
         "name": name,
@@ -624,8 +904,16 @@ def check_cookie(raw: str, http_get: HttpGet | None = None) -> dict:
         "session": windows.get("session"),
         "weekly": windows.get("weekly"),
         "extras": extras,
+        "rotated": rotated,
         "probe": _probe_info(probes, started),
     }
+    if rotated:
+        fresh = _apply_refresh(raw, original_fields, refresh)
+        if fresh:
+            # Internal only: the live cookie for keep-alive storage. Stripped from
+            # the public JSON by public_check_result and never logged.
+            result["freshCookie"] = fresh
+    return result
 
 
 def telegram_caption(result: dict) -> str:

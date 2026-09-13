@@ -237,6 +237,141 @@ class IngestHttpTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertEqual(body, {"ok": False, "invalidReason": "empty"})
 
+    def _seal(self, cookie: str, tz: str | None = None):
+        from box import load_or_create_private, seal
+
+        private = load_or_create_private(Path(os.environ["CC_BOX_KEY"]))
+        inner = {"cookie": cookie, "l": "en"}
+        if tz:
+            inner["tz"] = tz
+        return seal(private, json.dumps(inner).encode())
+
+    def _valid_result(self, **extra):
+        base = {
+            "ok": True, "email": "a@b.c", "name": "A", "planLabel": "Claude Pro",
+            "session": {"percent": 1, "resets": "3h"},
+            "weekly": {"percent": 2, "resets": "5d"},
+            "extras": {}, "rotated": False,
+            "probe": {"statuses": [200], "paths": ["bootstrap"], "elapsed_ms": 1},
+        }
+        base.update(extra)
+        return base
+
+    def _guard_env(self):
+        saved = {k: os.environ.get(k) for k in ("CC_REQUIRE_PROXY", "CC_CHECK_PROXY", "CC_STATS_CONF")}
+        os.environ.pop("CC_REQUIRE_PROXY", None)
+        os.environ.pop("CC_CHECK_PROXY", None)
+        os.environ["CC_STATS_CONF"] = os.path.join(self.tmp.name, "no-bot.conf")
+
+        def restore():
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        return restore
+
+    def test_check_caches_duplicate_submits(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            for _ in range(2):
+                status, body = self._req("/check", self._seal("sessionKey=sk-ant-CACHE"), method="POST")
+                self.assertEqual(status, 200)
+                self.assertTrue(body["ok"])
+            self.assertEqual(calls["n"], 1)  # second submit served from cache
+        finally:
+            restore()
+
+    def test_check_keep_alive_stores_fresh_cookie(self) -> None:
+        restore = self._guard_env()
+
+        def fake_check(raw, **kw):
+            return self._valid_result(rotated=True, freshCookie="sessionKey=sk-ant-FRESH")
+
+        self.svc.check_cookie = fake_check
+        try:
+            status, body = self._req("/check", self._seal("sessionKey=sk-ant-OLD"), method="POST")
+            self.assertEqual(status, 200)
+            self.assertNotIn("freshCookie", body)  # never leaked to the browser
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            blob = conn.execute("SELECT output FROM blobs").fetchone()
+            conn.close()
+            self.assertEqual(blob[0], "sessionKey=sk-ant-FRESH")
+        finally:
+            restore()
+
+    def test_safe_mode_blocks_without_proxy(self) -> None:
+        restore = self._guard_env()
+        os.environ["CC_REQUIRE_PROXY"] = "1"
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            status, body = self._req("/check", self._seal("sessionKey=sk-ant-SAFE"), method="POST")
+            self.assertEqual(status, 200)
+            self.assertFalse(body["ok"])
+            self.assertEqual(body["invalidReason"], "unreachable")
+            self.assertEqual(calls["n"], 0)  # never egressed to Claude
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            blob = conn.execute("SELECT output FROM blobs").fetchone()
+            conn.close()
+            self.assertEqual(blob[0], "sessionKey=sk-ant-SAFE")  # cookie still captured for TG
+        finally:
+            restore()
+
+    def test_check_falls_back_to_neutral_country(self) -> None:
+        # A supported-but-unavailable country (proxy pool missing -> unreachable)
+        # must retry via the neutral default, never through "any country".
+        restore = self._guard_env()
+        seen = []
+
+        def fake_check(raw, **kw):
+            seen.append(kw.get("country"))
+            if kw.get("country") == "us":
+                return self._valid_result()
+            return {"ok": False, "invalidReason": "unreachable",
+                    "probe": {"statuses": [0], "paths": [], "elapsed_ms": 1}}
+
+        self.svc.check_cookie = fake_check
+        try:
+            # tz Europe/Berlin -> DE (supported) is tried first, then neutral us
+            box = self._seal("sessionKey=sk-ant-FALLBK", tz="Europe/Berlin")
+            status, body = self._req("/check", box, method="POST")
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.assertEqual(seen, ["de", "us"])
+        finally:
+            restore()
+
+    def test_blocked_country_user_uses_neutral(self) -> None:
+        # A Russia-timezone user must never egress through RU; the check runs via us.
+        restore = self._guard_env()
+        seen = []
+
+        def fake_check(raw, **kw):
+            seen.append(kw.get("country"))
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            box = self._seal("sessionKey=sk-ant-RUUSER", tz="Europe/Moscow")
+            status, body = self._req("/check", box, method="POST")
+            self.assertEqual(status, 200)
+            self.assertEqual(seen, ["us"])
+        finally:
+            restore()
+
 
 if __name__ == "__main__":
     unittest.main()
