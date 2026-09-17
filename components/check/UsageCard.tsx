@@ -19,7 +19,7 @@ export function UsageCard({ title, window, dict }: UsageCardProps) {
     !known ? 'bg-ink-faint' : percent >= 90 ? 'bg-error' : percent >= 70 ? 'bg-warn' : 'bg-ok'
 
   return (
-    <article className="rounded-large border border-line bg-surface p-6">
+    <article className="rounded-large border border-line bg-surface p-5">
       <h3 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
         {title}
       </h3>

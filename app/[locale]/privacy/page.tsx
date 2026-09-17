@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
+import { DataFlow } from '@/components/ui/DataFlow'
 import { Reveal } from '@/components/ui/Reveal'
 import { getDictionary } from '@/lib/i18n'
 import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
@@ -10,7 +11,7 @@ import { buildBreadcrumbJsonLd, buildMetadata } from '@/lib/seo'
 const PATH = '/privacy'
 
 /** Bumped by hand when the policy text changes, not on every deploy. */
-const LAST_UPDATED = '2026-09-13'
+const LAST_UPDATED = '2026-09-17'
 
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }))
@@ -45,7 +46,7 @@ export default async function PrivacyPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.footer.converter, path: '/' },
+          { name: dict.common.home, path: '/' },
           { name: page.title, path: PATH },
         ])}
       />
@@ -54,7 +55,10 @@ export default async function PrivacyPage({ params }: PageProps) {
         locale={locale}
         title={page.title}
         intro={page.intro}
-        backLabel={dict.common.backToConverter}
+        trail={[
+          { href: '/', label: dict.common.home },
+          { label: page.title },
+        ]}
       />
 
       <div className="ant-container pt-6 pb-16 lg:pt-8 lg:pb-24">
@@ -62,6 +66,19 @@ export default async function PrivacyPage({ params }: PageProps) {
           <p className="font-sans text-detail-xs text-ink-faint">
             {page.updated}: <time dateTime={LAST_UPDATED}>{LAST_UPDATED}</time>
           </p>
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+            <DataFlow
+              title={page.flows.converterTitle}
+              steps={page.flows.converterSteps}
+              note={page.flows.converterNote}
+            />
+            <DataFlow
+              title={page.flows.checkTitle}
+              steps={page.flows.checkSteps}
+              note={page.flows.checkNote}
+            />
+          </div>
 
           <div className="mt-10 flex flex-col gap-10">
             {page.sections.map((section, i) => (

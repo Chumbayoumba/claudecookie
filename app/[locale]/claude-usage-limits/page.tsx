@@ -45,9 +45,11 @@ export default async function ClaudeUsageLimitsPage({ params }: PageProps) {
       description={dict.meta.claudeUsage.description}
       datePublished={PUBLISHED}
       ctaPath="/check"
-      crumbConverter={dict.footer.converter}
+      homeLabel={dict.common.home}
+      guidesLabel={dict.nav.guides}
+      badge={dict.common.guideBadge}
+      onThisPage={dict.common.onThisPage}
       updatedLabel={dict.pages.privacy.updated}
-      backLabel={dict.common.backToConverter}
       illustration={
         <Terminal
           title="claude — usage"

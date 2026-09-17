@@ -1,12 +1,14 @@
 'use client'
 
 import { AnimatePresence, motion } from 'motion/react'
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { CheckingBar } from './CheckingBar'
+import { TrustRow } from './TrustRow'
 import { UsageCard } from './UsageCard'
 import { sealJson } from '@/lib/box'
 import { splitCookieSets } from '@/lib/cookies/split'
 import { metrikaGoal } from '@/lib/analytics'
-import type { CheckResult, InvalidReason } from '@/lib/check/types'
+import type { CheckResult } from '@/lib/check/types'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { Button } from '@/components/ui/Button'
@@ -23,7 +25,7 @@ interface CheckerProps {
 function reasonText(dict: Dictionary, reason?: string): string {
   const reasons = dict.check.reasons
   if (reason && reason in reasons) {
-    return reasons[reason as InvalidReason]
+    return reasons[reason as keyof typeof reasons]
   }
   return dict.check.error
 }
@@ -88,7 +90,14 @@ export function Checker({ locale, dict }: CheckerProps) {
   return (
     <div className="flex flex-col gap-6">
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="overflow-hidden rounded-large border border-line bg-surface">
+        <TrustRow encrypt={dict.check.trustEncrypt} send={dict.check.trustSend} />
+        <div
+          className={cn(
+            'overflow-hidden rounded-large border border-line bg-surface',
+            'transition-colors duration-200 ease-ant hover:border-line-strong',
+            busy && 'border-clay/35',
+          )}
+        >
           <div className="border-b border-line px-4 py-3">
             <label
               htmlFor="claude-cookie"
@@ -97,6 +106,7 @@ export function Checker({ locale, dict }: CheckerProps) {
               {dict.check.inputLabel}
             </label>
           </div>
+          <CheckingBar active={busy} />
           <textarea
             id="claude-cookie"
             value={value}
@@ -137,16 +147,15 @@ export function Checker({ locale, dict }: CheckerProps) {
 
       <AnimatePresence initial={false}>
         {failed ? (
-          <motion.p
+          <motion.div
             key="failed"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
+            initial={{ y: 8 }}
+            animate={{ y: 0 }}
+            exit={{ y: 6 }}
             transition={{ duration: 0.28, ease: EASE }}
-            className="rounded-large border border-error/30 bg-error/5 px-5 py-4 font-sans text-detail-m text-error"
           >
-            {dict.check.error}
-          </motion.p>
+            <StatusCard tone="error" title={dict.check.error} />
+          </motion.div>
         ) : null}
       </AnimatePresence>
 
@@ -154,10 +163,10 @@ export function Checker({ locale, dict }: CheckerProps) {
         {results ? (
           <motion.div
             key={`n${results.length}-${results[0]?.ok ? 'v' : 'x'}`}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.35, ease: EASE }}
+            initial={{ y: 10 }}
+            animate={{ y: 0 }}
+            exit={{ y: 8 }}
+            transition={{ duration: 0.32, ease: EASE }}
             className="flex flex-col gap-4"
           >
             {results.length > 1 ? (
@@ -185,21 +194,33 @@ export function Checker({ locale, dict }: CheckerProps) {
   )
 }
 
-function CheckReport({ result, dict }: { result: CheckResult; dict: Dictionary }) {
+export function CheckReport({
+  result,
+  dict,
+  footer,
+}: {
+  result: CheckResult
+  dict: Dictionary
+  footer?: ReactNode
+}) {
   if (!result.ok) {
     return (
-      <section className="rounded-large border border-error/25 bg-error/5 p-6 sm:p-8">
-        <Pill tone="error">{dict.check.invalid}</Pill>
-        <p className="mt-4 max-w-[52ch] text-paragraph-xs text-ink-secondary">
-          {reasonText(dict, result.invalidReason)}
-        </p>
-      </section>
+      <StatusCard
+        tone="error"
+        title={dict.check.invalid}
+        body={reasonText(dict, result.invalidReason)}
+      />
     )
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="rounded-large border border-line bg-surface p-6 sm:p-8">
+    <div className="flex flex-col gap-3">
+      <motion.section
+        initial={{ y: 8 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.3, ease: EASE }}
+        className="rounded-large border border-line bg-surface p-5 sm:p-6"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Pill tone="ok">
             <CheckIcon />
@@ -208,13 +229,18 @@ function CheckReport({ result, dict }: { result: CheckResult; dict: Dictionary }
           {result.planLabel ? <Pill tone="accent">{result.planLabel}</Pill> : null}
         </div>
 
-        <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+        <motion.dl
+          initial={{ y: 8 }}
+          animate={{ y: 0 }}
+          transition={{ duration: 0.3, delay: 0.06, ease: EASE }}
+          className="mt-5 grid gap-5 sm:grid-cols-2"
+        >
           <div className="min-w-0">
             <dt className="font-sans text-detail-xs tracking-[0.06em] text-ink-faint uppercase">
               {dict.check.email}
             </dt>
             <dd
-              className="mt-1.5 truncate font-sans text-detail-xl text-ink"
+              className="mt-1 truncate font-sans text-detail-l text-ink"
               title={result.email || undefined}
             >
               {result.email || '—'}
@@ -224,18 +250,54 @@ function CheckReport({ result, dict }: { result: CheckResult; dict: Dictionary }
             <dt className="font-sans text-detail-xs tracking-[0.06em] text-ink-faint uppercase">
               {dict.check.name}
             </dt>
-            <dd className="mt-1.5 truncate font-sans text-detail-xl text-ink">
-              {result.name || '—'}
-            </dd>
+            <dd className="mt-1 truncate font-sans text-detail-l text-ink">{result.name || '—'}</dd>
           </div>
-        </dl>
-      </section>
+        </motion.dl>
+      </motion.section>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <motion.div
+        initial={{ y: 8 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.3, delay: 0.12, ease: EASE }}
+        className="grid gap-3 sm:grid-cols-2"
+      >
         <UsageCard title={dict.check.session} window={result.session} dict={dict} />
         <UsageCard title={dict.check.weekly} window={result.weekly} dict={dict} />
-      </div>
+      </motion.div>
+
+      {footer ? <div className="flex flex-col gap-3">{footer}</div> : null}
     </div>
+  )
+}
+
+function StatusCard({
+  tone,
+  title,
+  body,
+}: {
+  tone: 'error' | 'ok'
+  title: string
+  body?: string
+}) {
+  return (
+    <section className="rounded-large border border-line bg-surface p-5 sm:p-6">
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            'mt-0.5 grid size-9 shrink-0 place-items-center rounded-main border border-line bg-bg-secondary',
+            tone === 'error' ? 'text-error' : 'text-ok',
+          )}
+        >
+          {tone === 'error' ? <MarkBad /> : <MarkOk />}
+        </span>
+        <div>
+          <h3 className="font-sans text-detail-l font-medium text-ink">{title}</h3>
+          {body ? (
+            <p className="mt-1.5 max-w-[52ch] text-paragraph-xs text-ink-secondary">{body}</p>
+          ) : null}
+        </div>
+      </div>
+    </section>
   )
 }
 

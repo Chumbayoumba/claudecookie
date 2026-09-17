@@ -44,7 +44,7 @@ export default async function NetscapeFormatPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.footer.converter, path: '/' },
+          { name: dict.common.home, path: '/' },
           { name: page.title, path: PATH },
         ])}
       />
@@ -53,7 +53,11 @@ export default async function NetscapeFormatPage({ params }: PageProps) {
         locale={locale}
         title={page.title}
         intro={page.intro}
-        backLabel={dict.common.backToConverter}
+        trail={[
+          { href: '/', label: dict.common.home },
+          { label: dict.footer.reference },
+          { label: page.title },
+        ]}
       />
 
       <div className="ant-container py-16 lg:py-20">

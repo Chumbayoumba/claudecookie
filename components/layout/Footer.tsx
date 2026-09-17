@@ -16,9 +16,14 @@ export function Footer({ locale, dict }: FooterProps) {
       links: [
         { href: localePath(locale, '/'), label: dict.footer.converter },
         { href: localePath(locale, '/check'), label: dict.footer.checker },
+        { href: localePath(locale, '/credential'), label: dict.footer.credentials },
+      ],
+    },
+    {
+      title: dict.footer.guides,
+      links: [
         { href: localePath(locale, '/claude-code-login'), label: dict.nav.claudeCodeLogin },
         { href: localePath(locale, '/claude-usage-limits'), label: dict.nav.claudeUsage },
-        { href: localePath(locale, '/credential'), label: dict.nav.getCredential },
       ],
     },
     {
@@ -49,7 +54,7 @@ export function Footer({ locale, dict }: FooterProps) {
             <p className="mt-4 text-paragraph-xs text-ink-secondary">{dict.footer.tagline}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-10 sm:grid-cols-3 lg:gap-16">
+          <div className="grid grid-cols-2 gap-10 sm:grid-cols-4 lg:gap-16">
             {columns.map((col) => (
               // <nav> gives the group an accessible name without spending a
               // heading: the three footer column labels used to emit identical

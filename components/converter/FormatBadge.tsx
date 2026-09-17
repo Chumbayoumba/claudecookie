@@ -37,10 +37,10 @@ export function FormatBadge({ format, confidence, hasInput, dict }: FormatBadgeP
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
           key={`${state}-${format ?? ''}-${isGuess}`}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 4, rotate: -3 }}
+          animate={{ opacity: 1, y: 0, rotate: 0 }}
           exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.18, ease: [0.165, 0.84, 0.44, 1] }}
+          transition={{ duration: 0.22, ease: [0.165, 0.84, 0.44, 1] }}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-round border px-2.5 py-1',
             'font-sans text-detail-xs font-medium whitespace-nowrap',

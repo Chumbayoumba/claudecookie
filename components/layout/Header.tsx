@@ -4,22 +4,21 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { Logo, Wordmark } from './Logo'
+import { NavMenu } from './NavMenu'
 import { ThemeToggle } from './ThemeToggle'
+import { ToolSwitch } from './ToolSwitch'
 import { localePath, type Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { cn } from '@/lib/utils/cn'
 
-/*
- * Navigation uses plain anchors, not next/link.
- *
- * The site ships `connect-src 'self'`. Same-origin beacons and the session
- * check are allowed; third-party fetches are not. Next's client-side router
- * still works by fetching an RSC payload, so navigation uses plain anchors.
- *
- * Across the static pages whose shared JS is already cached, a browser
- * navigation costs nothing measurable. Keeping the directive airtight is worth
- * more than soft navigation here.
- */
+function samePath(pathname: string, href: string) {
+  const norm = (value: string) => {
+    let path = value === '/' ? '/' : `${value.replace(/\/+$/, '')}/`
+    if (path.startsWith('/en/')) path = path.slice(3) || '/'
+    return path
+  }
+  return norm(pathname) === norm(href)
+}
 
 interface HeaderProps {
   locale: Locale
@@ -31,8 +30,6 @@ export function Header({ locale, dict }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const pathname = usePathname()
 
-  // The header only grows a border once the page has moved, so it sits flush
-  // against the hero at rest.
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
     onScroll()
@@ -40,10 +37,8 @@ export function Header({ locale, dict }: HeaderProps) {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Close the mobile panel whenever navigation actually happens.
   useEffect(() => setMenuOpen(false), [pathname])
 
-  // A fixed-position panel over the page must not leave the body scrollable.
   useEffect(() => {
     document.body.style.overflow = menuOpen ? 'hidden' : ''
     return () => {
@@ -51,16 +46,13 @@ export function Header({ locale, dict }: HeaderProps) {
     }
   }, [menuOpen])
 
-  // The two /formats/ reference pages carry the site's informational keywords
-  // and previously had inbound links from the footer only; putting them in the
-  // primary nav is the strongest internal-link fix. /credential is a
-  // placeholder (now noindexed) and lives in the footer only.
-  const links = [
-    { href: localePath(locale, '/'), label: dict.nav.converter },
-    { href: localePath(locale, '/check'), label: dict.nav.check },
+  const docs = [
     { href: localePath(locale, '/formats/netscape-cookies-txt'), label: dict.nav.netscapeFormat },
     { href: localePath(locale, '/formats/json-cookies'), label: dict.nav.jsonFormat },
-    { href: localePath(locale, '/privacy'), label: dict.nav.privacy },
+  ]
+  const guides = [
+    { href: localePath(locale, '/claude-code-login'), label: dict.nav.claudeCodeLogin },
+    { href: localePath(locale, '/claude-usage-limits'), label: dict.nav.claudeUsage },
   ]
 
   return (
@@ -71,7 +63,7 @@ export function Header({ locale, dict }: HeaderProps) {
         scrolled ? 'border-line' : 'border-transparent',
       )}
     >
-      <div className="ant-container flex h-16 items-center justify-between gap-4">
+      <div className="ant-container flex h-16 items-center justify-between gap-3">
         <a
           href={localePath(locale, '/')}
           className="flex items-center gap-2.5 text-ink transition-opacity duration-200 ease-ant hover:opacity-70"
@@ -80,25 +72,25 @@ export function Header({ locale, dict }: HeaderProps) {
           <Wordmark />
         </a>
 
-        <nav aria-label="Main" className="hidden items-center gap-1 lg:flex">
-          {links.map((link) => {
-            const active = pathname === link.href
-            return (
-              <a
-                key={link.href}
-                href={link.href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'rounded-main px-3 py-2 font-sans text-detail-s font-medium',
-                  'transition-colors duration-200 ease-ant hover:bg-surface-hover',
-                  active ? 'text-ink' : 'text-ink-secondary hover:text-ink',
-                )}
-              >
-                {link.label}
-              </a>
-            )
-          })}
-        </nav>
+        <div className="hidden items-center gap-2 xl:flex">
+          <ToolSwitch locale={locale} dict={dict} pathname={pathname} />
+          <nav aria-label="Main" className="flex items-center gap-0.5">
+            <NavMenu label={dict.nav.docs} items={docs} />
+            <NavMenu label={dict.nav.guides} items={guides} />
+            <a
+              href={localePath(locale, '/privacy')}
+              className={cn(
+                'rounded-main px-3 py-2 font-sans text-detail-s font-medium',
+                'transition-colors duration-200 ease-ant hover:bg-surface-hover',
+                samePath(pathname, localePath(locale, '/privacy'))
+                  ? 'text-ink'
+                  : 'text-ink-secondary hover:text-ink',
+              )}
+            >
+              {dict.nav.privacy}
+            </a>
+          </nav>
+        </div>
 
         <div className="flex items-center gap-1">
           <div className="hidden sm:block">
@@ -117,7 +109,7 @@ export function Header({ locale, dict }: HeaderProps) {
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
             className={cn(
-              'grid size-9 cursor-pointer place-items-center rounded-main lg:hidden',
+              'grid size-9 cursor-pointer place-items-center rounded-main xl:hidden',
               'text-ink-secondary transition-colors duration-200 ease-ant',
               'hover:bg-surface-hover hover:text-ink',
             )}
@@ -140,27 +132,31 @@ export function Header({ locale, dict }: HeaderProps) {
         </div>
       </div>
 
-      {/* Mobile panel. Rendered below the 16px header bar, covering the rest. */}
       <div
         className={cn(
-          'fixed inset-x-0 bottom-0 top-16 z-30 lg:hidden',
+          'fixed inset-x-0 bottom-0 top-16 z-30 xl:hidden',
           'border-t border-line bg-bg',
           'transition-[opacity,visibility] duration-300 ease-ant',
           menuOpen ? 'visible opacity-100' : 'invisible opacity-0',
         )}
       >
-        <nav aria-label="Mobile" className="ant-container flex flex-col gap-1 py-6">
-          {links.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="rounded-main px-3 py-3.5 font-sans text-detail-xl font-medium text-ink transition-colors duration-200 ease-ant hover:bg-surface-hover"
-            >
-              {link.label}
-            </a>
-          ))}
+        <nav aria-label="Mobile" className="ant-container flex flex-col gap-6 overflow-y-auto py-6">
+          <div>
+            <p className="px-1 pb-2 font-sans text-detail-xs tracking-wide text-ink-faint uppercase">
+              {dict.footer.tools}
+            </p>
+            <ToolSwitch locale={locale} dict={dict} pathname={pathname} compact />
+          </div>
+          <MobileGroup title={dict.nav.docs} items={docs} />
+          <MobileGroup title={dict.nav.guides} items={guides} />
+          <a
+            href={localePath(locale, '/privacy')}
+            className="rounded-main px-3 py-3.5 font-sans text-detail-xl font-medium text-ink transition-colors duration-200 ease-ant hover:bg-surface-hover"
+          >
+            {dict.nav.privacy}
+          </a>
 
-          <div className="mt-4 border-t border-line pt-5 sm:hidden">
+          <div className="border-t border-line pt-5 sm:hidden">
             <p className="px-3 pb-2 font-sans text-detail-xs tracking-wide text-ink-faint uppercase">
               {dict.nav.language}
             </p>
@@ -169,5 +165,26 @@ export function Header({ locale, dict }: HeaderProps) {
         </nav>
       </div>
     </header>
+  )
+}
+
+function MobileGroup({ title, items }: { title: string; items: { href: string; label: string }[] }) {
+  return (
+    <div>
+      <p className="px-1 pb-2 font-sans text-detail-xs tracking-wide text-ink-faint uppercase">
+        {title}
+      </p>
+      <div className="flex flex-col gap-1">
+        {items.map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            className="rounded-main px-3 py-3 font-sans text-detail-l font-medium text-ink transition-colors duration-200 ease-ant hover:bg-surface-hover"
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
+    </div>
   )
 }

@@ -6,6 +6,7 @@ import { Hero } from '@/components/converter/Hero'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { Accordion } from '@/components/ui/Accordion'
 import { Reveal } from '@/components/ui/Reveal'
+import { ToolShell } from '@/components/ui/ToolShell'
 import { ALL_FORMATS } from '@/lib/cookies'
 import { getDictionary } from '@/lib/i18n'
 import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
@@ -56,7 +57,9 @@ export default async function HomePage({ params }: PageProps) {
       </section>
 
       <section className="ant-container pb-16" aria-label={dict.hero.eyebrow}>
-        <Converter locale={locale} dict={dict} />
+        <ToolShell>
+          <Converter locale={locale} dict={dict} />
+        </ToolShell>
       </section>
 
       {/* Checker promo */}

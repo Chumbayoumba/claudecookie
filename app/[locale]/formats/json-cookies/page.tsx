@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { JsonFormatTabs } from '@/components/formats/JsonFormatTabs'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
-import { CodeBlock } from '@/components/ui/CodeBlock'
 import { Reveal } from '@/components/ui/Reveal'
 import { convert, type CookieFormat } from '@/lib/cookies'
 import { SAMPLE_NETSCAPE } from '@/lib/cookies/samples'
@@ -75,7 +75,7 @@ export default async function JsonFormatsPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.footer.converter, path: '/' },
+          { name: dict.common.home, path: '/' },
           { name: page.title, path: PATH },
         ])}
       />
@@ -84,7 +84,11 @@ export default async function JsonFormatsPage({ params }: PageProps) {
         locale={locale}
         title={page.title}
         intro={page.intro}
-        backLabel={dict.common.backToConverter}
+        trail={[
+          { href: '/', label: dict.common.home },
+          { label: dict.footer.reference },
+          { label: page.title },
+        ]}
       />
 
       <div className="ant-container py-16 lg:py-20">
@@ -148,29 +152,22 @@ export default async function JsonFormatsPage({ params }: PageProps) {
             <h2 className="mt-16 text-display-s sm:text-display-m">{page.formatsTitle}</h2>
           </Reveal>
 
-          <div className="mt-10 flex flex-col gap-14">
-            {page.entries.map((entry) => (
-              <Reveal key={entry.id}>
-                <section id={entry.id} className="scroll-mt-28">
-                  <h3 className="text-display-xs sm:text-display-s">{entry.title}</h3>
-                  <p className="mt-4 max-w-[62ch] text-paragraph-xs text-ink-secondary">
-                    {entry.body}
-                  </p>
-                  <p className="mt-3 font-sans text-detail-xs text-ink-faint">
-                    <span className="tracking-[0.08em] uppercase">{dict.common.usedBy}</span>
-                    {' — '}
-                    {entry.usedBy}
-                  </p>
-                  <CodeBlock
-                    className="mt-6"
-                    code={(samples[entry.id] ?? '').trimEnd()}
-                    syntax={entry.id === 'header' ? 'text' : 'json'}
-                    caption={dict.common.example}
-                  />
-                </section>
-              </Reveal>
-            ))}
-          </div>
+          <Reveal>
+            <div className="mt-10">
+              <JsonFormatTabs
+                usedByLabel={dict.common.usedBy}
+                exampleLabel={dict.common.example}
+                tabs={page.entries.map((entry) => ({
+                  id: entry.id,
+                  title: entry.title,
+                  body: entry.body,
+                  usedBy: entry.usedBy,
+                  code: (samples[entry.id] ?? '').trimEnd(),
+                  syntax: entry.id === 'header' ? 'text' : 'json',
+                }))}
+              />
+            </div>
+          </Reveal>
 
           {/* Lossiness */}
           <Reveal>

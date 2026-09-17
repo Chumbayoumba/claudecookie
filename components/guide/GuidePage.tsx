@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { GoalLink } from '@/components/analytics/GoalLink'
+import { GuideToc } from '@/components/guide/GuideToc'
+import { sectionId } from '@/components/guide/sectionId'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { Accordion } from '@/components/ui/Accordion'
@@ -34,10 +36,11 @@ interface GuidePageProps {
   datePublished: string
   /** Where the closing CTA points, without locale prefix, e.g. `/check`. */
   ctaPath: string
-  /** Breadcrumb + back-link labels, from the dictionary. */
-  crumbConverter: string
+  homeLabel: string
+  guidesLabel: string
+  badge: string
+  onThisPage: string
   updatedLabel: string
-  backLabel: string
   /** Optional illustration (e.g. a <Terminal>), shown under the intro. */
   illustration?: ReactNode
 }
@@ -54,11 +57,24 @@ export function GuidePage({
   description,
   datePublished,
   ctaPath,
-  crumbConverter,
+  homeLabel,
+  guidesLabel,
+  badge,
+  onThisPage,
   updatedLabel,
-  backLabel,
   illustration,
 }: GuidePageProps) {
+  const faqId = 'faq'
+  const sourcesId = sectionId(guide.sourcesTitle, 90)
+  const toc = [
+    ...guide.sections.map((section, i) => ({
+      id: sectionId(section.title, i),
+      title: section.title,
+    })),
+    { id: sourcesId, title: guide.sourcesTitle },
+    { id: faqId, title: guide.faqTitle },
+  ]
+
   const jsonLd = buildGuideJsonLd({
     locale,
     path,
@@ -68,7 +84,7 @@ export function GuidePage({
     dateModified: guide.updated,
     faq: guide.faq,
     trail: [
-      { name: crumbConverter, path: '/' },
+      { name: homeLabel, path: '/' },
       { name: guide.title, path },
     ],
   })
@@ -77,59 +93,74 @@ export function GuidePage({
     <>
       <JsonLd data={jsonLd} />
 
-      <PageHeader locale={locale} title={guide.title} intro={guide.intro} backLabel={backLabel} />
+      <PageHeader
+        locale={locale}
+        title={guide.title}
+        intro={guide.intro}
+        badge={badge}
+        trail={[
+          { href: '/', label: homeLabel },
+          { label: guidesLabel },
+          { label: guide.title },
+        ]}
+      />
 
       <article className="ant-container pt-6 pb-16 lg:pb-24">
-        <div className="max-w-[var(--container-prose)]">
-          <p className="font-sans text-detail-xs text-ink-faint">
-            {updatedLabel}: {guide.updated}
-          </p>
+        <div className="lg:grid lg:grid-cols-[minmax(0,42rem)_14rem] lg:items-start lg:gap-16">
+          <div className="max-w-[var(--container-prose)]">
+            <p className="font-sans text-detail-xs text-ink-faint">
+              {updatedLabel}: {guide.updated}
+            </p>
 
-          {illustration && (
+            {illustration && (
+              <Reveal>
+                <div className="mt-8">{illustration}</div>
+              </Reveal>
+            )}
+
+            {guide.sections.map((section, i) => (
+              <Reveal key={section.title} delay={i * 0.04}>
+                <section id={sectionId(section.title, i)} className="mt-10 scroll-mt-28 first:mt-8">
+                  <h2 className="text-display-xs sm:text-display-s">{section.title}</h2>
+                  {section.body.split('\n\n').map((para, j) => (
+                    <p
+                      key={j}
+                      className="mt-4 text-paragraph-xs text-ink-secondary sm:text-paragraph-s"
+                    >
+                      {para}
+                    </p>
+                  ))}
+                </section>
+              </Reveal>
+            ))}
+
             <Reveal>
-              <div className="mt-8">{illustration}</div>
-            </Reveal>
-          )}
-
-          {guide.sections.map((section, i) => (
-            <Reveal key={section.title} delay={i * 0.04}>
-              <section className="mt-10 first:mt-8">
-                <h2 className="text-display-xs sm:text-display-s">{section.title}</h2>
-                {section.body.split('\n\n').map((para, j) => (
-                  <p key={j} className="mt-4 text-paragraph-xs text-ink-secondary sm:text-paragraph-s">
-                    {para}
-                  </p>
-                ))}
+              <section id={sourcesId} className="mt-12 scroll-mt-28 border-t border-line pt-8">
+                <h2 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
+                  {guide.sourcesTitle}
+                </h2>
+                <ul className="mt-4 flex flex-col gap-2">
+                  {guide.sources.map((source) => (
+                    <li key={source.url}>
+                      <a
+                        href={source.url}
+                        rel="noopener noreferrer external"
+                        target="_blank"
+                        className="ant-link font-sans text-detail-s text-ink-secondary hover:text-ink"
+                      >
+                        {source.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </section>
             </Reveal>
-          ))}
+          </div>
 
-          {/* Sources */}
-          <Reveal>
-            <section className="mt-12 border-t border-line pt-8">
-              <h2 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
-                {guide.sourcesTitle}
-              </h2>
-              <ul className="mt-4 flex flex-col gap-2">
-                {guide.sources.map((source) => (
-                  <li key={source.url}>
-                    <a
-                      href={source.url}
-                      rel="noopener noreferrer external"
-                      target="_blank"
-                      className="ant-link font-sans text-detail-s text-ink-secondary hover:text-ink"
-                    >
-                      {source.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </Reveal>
+          <GuideToc label={onThisPage} items={toc} />
         </div>
 
-        {/* FAQ */}
-        <div className="mt-14 max-w-3xl">
+        <div id={faqId} className="mt-14 max-w-3xl scroll-mt-28">
           <Reveal>
             <h2 className="text-display-s sm:text-display-m">{guide.faqTitle}</h2>
           </Reveal>
@@ -140,7 +171,6 @@ export function GuidePage({
           </Reveal>
         </div>
 
-        {/* CTA into the tool */}
         <Reveal>
           <div className="mt-14 flex max-w-3xl flex-col gap-5 rounded-large border border-line bg-bg-secondary p-8 sm:flex-row sm:items-center sm:justify-between">
             <div>

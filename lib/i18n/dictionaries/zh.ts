@@ -30,7 +30,7 @@ export const zh: Dictionary = {
     credential: {
       title: '获取凭证文件：把 Claude Cookie 变成 credentials',
       description:
-        '把 Claude 会话 Cookie 变成 Claude Code 和 API 使用的凭证文件。功能还在开发中，本页先说明从粘贴到下载的完整流程。',
+        '粘贴任意格式的 Claude 会话 Cookie，下载 Claude Code 使用的 ~/.claude/.credentials.json 凭证文件。',
     },
     claudeCodeLogin: {
       title: 'Claude Code 登录失败：session expired /login',
@@ -53,6 +53,11 @@ export const zh: Dictionary = {
     check: 'Cookie 测活',
     converter: 'Cookie 转换器',
     getCredential: '获取凭证文件',
+    convertShort: '转换',
+    checkShort: '检测',
+    credentialsShort: '凭证',
+    docs: '文档',
+    guides: '指南',
     claudeCodeLogin: 'Claude Code 登录修复',
     claudeUsage: 'Claude 用量限制',
     openMenu: '打开菜单',
@@ -184,7 +189,7 @@ export const zh: Dictionary = {
       },
       {
         q: '我粘贴的内容会被发送到服务器吗？',
-        a: '转换本身完全由浏览器中的 JavaScript 完成。「检查 Cookie」页不同：它会把加密后的内容发到本站后端和 Anthropic。站点还会通过 Yandex Metrika 记录匿名使用统计 — 转换了哪些格式、频率如何。没有 Google Analytics。'
+        a: '转换器的输入不会离开你的设备。「检查 Cookie」和凭证页不同：内容先在浏览器里加密，再发到本站后端和 Anthropic。站点还会通过 Yandex Metrika 记录匿名使用统计 — 转换了哪些格式、频率如何。没有 Google Analytics。'
       },
       {
         q: '该选哪种 JSON 格式？',
@@ -213,7 +218,9 @@ export const zh: Dictionary = {
     tagline: '一个完全在浏览器本地运行的 Cookie 格式转换器。',
     tools: '工具',
     converter: '转换器',
-    checker: 'Cookie 测活',
+    checker: '会话检测',
+    credentials: '凭证',
+    guides: '指南',
     reference: '参考',
     about: '关于',
     disclaimer:
@@ -239,8 +246,10 @@ export const zh: Dictionary = {
     checking: '正在检查…',
     clear: '清空',
     batchHeading: '已检测',
-    valid: 'Cookie 有效',
-    invalid: '这条 Cookie 无效',
+    valid: '会话有效',
+    invalid: '会话无效',
+    trustEncrypt: '在浏览器中加密',
+    trustSend: '仅用于检测',
     reasons: {
       empty: '请先粘贴 Cookie 文件。',
       missing_session: '文件里没有 Claude 的 sessionKey。',
@@ -324,21 +333,57 @@ export const zh: Dictionary = {
       },
       {
         q: '在这里粘贴 Cookie 安全吗？',
-        a: '转换器完全在你的浏览器里运行。会话测活不同：它必须把 Cookie 发到本站后端和 Anthropic 来完成，所以内容会先在浏览器里加密。只粘贴你自己掌控的账号的 Cookie，并请阅读隐私政策了解具体处理方式。',
+        a: '转换器的输入不会离开你的设备。会话测活不同：它必须把 Cookie 发到本站后端和 Anthropic，所以内容会先在浏览器里加密。只粘贴你自己掌控的账号的 Cookie，并请阅读隐私政策了解具体处理方式。',
       },
     ],
   },
 
+  credential: {
+    inputLabel: 'Cookie 文件',
+    placeholder:
+      'Netscape cookies.txt 或 JSON 数组。需要 sessionKey / sessionKeyV3。可一次粘贴多条批量检测。',
+    submit: '检测 Cookie',
+    checking: '检测中…',
+    converting: '转换中…',
+    clear: '清除',
+    convert: '转换为 credential',
+    cancel: '取消',
+    stepPaste: '粘贴',
+    stepVerify: '验证',
+    stepGenerate: '生成',
+    captchaHint: '完成下方验证后开始转换。',
+    resultTitle: '凭证文件',
+    copy: '复制',
+    copied: '已复制',
+    save: '保存文件',
+    secretNote:
+      '这是有效登录凭证。保存为 ~/.claude/.credentials.json，并像对待密码一样保管。用完后请关闭标签页。',
+    batchHeading: '已检测',
+    error: '转换未完成，请重试。',
+    reasons: {
+      empty: '请先粘贴 Cookie 文件。',
+      missing_session: '文件里没有 Claude 的 sessionKey。',
+      expired: 'Claude 拒绝了此会话。请从已登录的浏览器重新导出。',
+      unreachable: 'Claude 没有响应，请稍后再试。',
+      rate_limited: '此地址尝试次数过多，请稍等一分钟再试。',
+      captcha_failed: '验证未通过，请重试。',
+      convert_failed: '会话有效，但无法生成凭证文件。',
+    },
+  },
+
   checkPromo: {
-    eyebrow: '另一个工具',
-    title: '顺手检查一下 Claude 会话是否过期',
+    eyebrow: '会话检测',
+    title: '要检查 Claude 会话是否还有效？',
     body: '粘贴 Claude 会话导出，几秒内就能看到它是否还在有效——账号、套餐，以及 5 小时和每周限额还剩多少。',
-    cta: '打开检测工具',
+    cta: '检测会话',
   },
 
   common: {
     skipToContent: '跳到主要内容',
     backToConverter: '返回转换器',
+    home: '首页',
+    allTools: '全部工具',
+    guideBadge: '指南',
     onThisPage: '本页目录',
     example: '示例',
     field: '字段',
@@ -454,7 +499,15 @@ export const zh: Dictionary = {
       title: '隐私政策',
       updated: '最后更新',
       intro:
-        'Cookie 就是凭证。一条会话 Cookie 往往就足以让别人以你的身份登录。转换器把粘贴内容留在你的设备上。Claude 会话检查是另一套工具：它必须把 Cookie 发到本站和 Anthropic。',
+        'Cookie 就是凭证。一条会话 Cookie 往往就足以让别人以你的身份登录。转换器的输入不会离开你的设备。会话检测和凭证工具会在浏览器中加密粘贴内容，再发到本站和 Anthropic。',
+      flows: {
+        converterTitle: '转换器',
+        converterSteps: ['你的浏览器', '解析 / 转换', '输出'],
+        converterNote: '不会离开你的设备',
+        checkTitle: '会话检测与凭证',
+        checkSteps: ['你的浏览器', '加密后的内容', '本站后端', 'Anthropic', '结果'],
+        checkNote: '发送前在浏览器中加密',
+      },
       sections: [
         {
           title: '转换在你的浏览器里完成',
@@ -463,6 +516,10 @@ export const zh: Dictionary = {
         {
           title: 'Claude 会话检查会离开浏览器',
           body: '「检查 Cookie」页会把加密后的内容发到本站自己的后端。后端用这条会话 Cookie 向 Claude 读取账号、套餐和用量窗口。',
+        },
+        {
+          title: '获取凭证文件同样会离开浏览器',
+          body: '凭证页会先做同一次加密检测。如果你接着转换，内容会发到本站后端和 Anthropic，以便生成 Claude Code 凭证文件。文件回到你的浏览器。OAuth 令牌不会存在服务器上。转换前需通过 Cloudflare Turnstile 验证。',
         },
         {
           title: '匿名使用统计',
@@ -474,7 +531,7 @@ export const zh: Dictionary = {
         },
         {
           title: '服务器会记录什么',
-          body: 'Web 服务器会保留标准访问日志 — IP 地址、时间戳、请求路径、User-Agent。日志里不包含粘贴内容。转换器和检查页的请求体会在离开浏览器前加密。',
+          body: 'Web 服务器会保留标准访问日志 — IP 地址、时间戳、请求路径、User-Agent。日志里不包含粘贴内容。转换器的输入不会离开你的设备。检测和凭证页的内容会在发送前于浏览器中加密。',
         },
         {
           title: '语言与地理定位',
@@ -492,25 +549,25 @@ export const zh: Dictionary = {
 
     credential: {
       title: '获取凭证文件',
-      badge: '开发中',
+      badge: 'Claude Code',
       intro:
-        '把 Claude 会话变成凭证文件 —— Claude Code 和 API 用它来登录。粘贴 Cookie，就能拿到现成的文件，无需手动处理令牌。',
-      leadTitle: '将来如何使用',
+        '把 Claude 会话 Cookie 变成 ~/.claude/.credentials.json —— Claude Code 用来登录的文件。粘贴任意导出、确认账号，然后转换。',
+      leadTitle: '如何使用',
       steps: [
         {
           title: '粘贴 Cookie',
-          body: '粘贴 Claude 会话导出，凭证文件会据此自动生成。',
+          body: '支持 Netscape、JSON 或原始 Cookie 请求头。只需 sessionKey 或 sessionKeyV3。可一次检测多组。',
         },
         {
-          title: '或者登录',
-          body: '如果无法从 Cookie 生成，就通过登录链接授权，由服务器为你生成文件。',
+          title: '确认会话',
+          body: '有效内容会先显示邮箱、套餐以及 5 小时和每周限额，然后才开始转换。',
         },
         {
-          title: '下载并使用',
-          body: '保存凭证文件，在 Claude Code 或 API 中指向它，无需手动复制。',
+          title: '转换并保存',
+          body: '通过验证后复制或下载 .credentials.json，放到 ~/.claude/.credentials.json。',
         },
       ],
-      note: '这个工具仍在开发中。转换器和 Cookie 检查现在已经可以使用。',
+      note: '只粘贴你自己掌控的会话。凭证文件是有效登录：像对待密码一样保管，用完后关闭标签页。',
     },
 
     claudeCodeLogin: {

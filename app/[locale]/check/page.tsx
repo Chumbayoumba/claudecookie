@@ -52,7 +52,7 @@ export default async function CheckPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.footer.converter, path: '/' },
+          { name: dict.common.allTools, path: '/' },
           { name: dict.nav.check, path: PATH },
         ])}
       />
@@ -62,14 +62,16 @@ export default async function CheckPage({ params }: PageProps) {
         locale={locale}
         title={dict.check.title}
         intro={dict.check.subtitle}
-        backLabel={dict.common.backToConverter}
+        trail={[
+          { href: '/', label: dict.common.allTools },
+          { label: dict.nav.check },
+        ]}
       />
 
       <section className="ant-container pt-8 pb-12 lg:pt-10 lg:pb-16">
         <CheckIntro locale={locale} dict={dict} />
       </section>
 
-      {/* Illustration: what the checker reveals */}
       <section className="ant-container pb-8">
         <div className="mx-auto max-w-2xl">
           <Terminal
@@ -85,8 +87,23 @@ export default async function CheckPage({ params }: PageProps) {
         </div>
       </section>
 
-      {/* How to get the cookie */}
-      <section className="border-t border-line bg-bg-secondary py-16 lg:py-20">
+      <section className="ant-container pb-4">
+        <Reveal>
+          <h2 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
+            {dict.check.readsTitle}
+          </h2>
+          <div className="mt-6 grid gap-px overflow-hidden rounded-large border border-line bg-line sm:grid-cols-3">
+            {dict.check.reads.map((item) => (
+              <div key={item.title} className="flex h-full flex-col bg-bg p-5">
+                <h3 className="font-sans text-detail-l font-medium text-ink">{item.title}</h3>
+                <p className="mt-2 text-paragraph-xs text-ink-secondary">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+      </section>
+
+      <section className="mt-10 border-t border-line bg-bg-secondary py-16 lg:py-20">
         <div className="ant-container">
           <Reveal>
             <h2 className="text-display-s sm:text-display-m">{dict.check.howTitle}</h2>

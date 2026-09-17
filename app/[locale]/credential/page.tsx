@@ -1,11 +1,14 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { CredentialTool } from '@/components/credential/CredentialTool'
+import { Terminal } from '@/components/guide/Terminal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
-import { Pill } from '@/components/ui/Pill'
+import { PageEnter } from '@/components/ui/PageEnter'
 import { Reveal } from '@/components/ui/Reveal'
+import { ToolShell } from '@/components/ui/ToolShell'
 import { getDictionary } from '@/lib/i18n'
-import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
+import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
 import { buildBreadcrumbJsonLd, buildMetadata } from '@/lib/seo'
 
 const PATH = '/credential'
@@ -23,20 +26,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!isLocale(raw)) return {}
   const dict = getDictionary(raw)
 
-  return {
-    // Thin placeholder for an unshipped feature: noindex until it has real
-    // content, so it does not drag down site quality or attract a credential-
-    // tooling review. Kept follow + linked from the footer so users still find
-    // it, and removed from app/sitemap.ts.
-    ...buildMetadata({
-      locale: raw,
-      path: PATH,
-      title: dict.meta.credential.title,
-      description: dict.meta.credential.description,
-      includeHreflang: false,
-    }),
-    robots: { index: false, follow: true },
-  }
+  return buildMetadata({
+    locale: raw,
+    path: PATH,
+    title: dict.meta.credential.title,
+    description: dict.meta.credential.description,
+  })
 }
 
 export default async function CredentialPage({ params }: PageProps) {
@@ -51,7 +46,7 @@ export default async function CredentialPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.footer.converter, path: '/' },
+          { name: dict.common.allTools, path: '/' },
           { name: page.title, path: PATH },
         ])}
       />
@@ -60,15 +55,39 @@ export default async function CredentialPage({ params }: PageProps) {
         locale={locale}
         title={page.title}
         intro={page.intro}
-        backLabel={dict.common.backToConverter}
+        trail={[
+          { href: '/', label: dict.common.allTools },
+          { label: page.title },
+        ]}
       />
 
-      <div className="ant-container py-12 lg:py-16">
-        <div className="max-w-[var(--container-prose)]">
-          <Reveal>
-            <Pill tone="accent">{page.badge}</Pill>
-          </Reveal>
+      <section className="ant-container pt-8 pb-12 lg:pt-10 lg:pb-16">
+        <ToolShell>
+          <PageEnter delay={0.16}>
+            <div className="max-w-3xl">
+              <CredentialTool locale={locale} dict={dict} />
+            </div>
+          </PageEnter>
+        </ToolShell>
+      </section>
 
+      <section className="ant-container pb-8">
+        <div className="mx-auto max-w-2xl">
+          <Terminal
+            title="claude credentials"
+            lines={[
+              { k: 'cmt', t: '# after convert: ~/.claude/.credentials.json' },
+              { k: 'ok', t: '✔ session verified — you@example.com · Claude Max' },
+              { k: 'out', t: 'wrote claudeAiOauth { accessToken, refreshToken, expiresAt }' },
+              { k: 'cmd', t: 'claude' },
+              { k: 'ok', t: '✔ Logged in as you@example.com — Claude Max' },
+            ]}
+          />
+        </div>
+      </section>
+
+      <div className="ant-container pb-16 lg:pb-20">
+        <div className="max-w-[var(--container-prose)]">
           <Reveal delay={0.05}>
             <h2 className="mt-8 font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
               {page.leadTitle}
@@ -88,7 +107,11 @@ export default async function CredentialPage({ params }: PageProps) {
 
           <Reveal delay={0.1}>
             <p className="mt-6 rounded-large border border-line bg-bg-secondary p-6 text-paragraph-xs text-ink-secondary">
-              {page.note}
+              {page.note}{' '}
+              <a href={localePath(locale, '/privacy')} className="ant-link text-ink hover:text-ink">
+                {dict.check.privacyLink}
+              </a>
+              .
             </p>
           </Reveal>
         </div>

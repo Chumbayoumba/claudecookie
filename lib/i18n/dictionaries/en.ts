@@ -51,7 +51,7 @@ export const en = {
     credential: {
       title: 'Get a credential file — turn a Claude cookie into credentials',
       description:
-        'Turn a Claude session cookie into a credentials file for Claude Code and the API. In development.',
+        'Paste a Claude session cookie in any format and download ~/.claude/.credentials.json for Claude Code.',
     },
     claudeCodeLogin: {
       title: 'Claude Code “session expired / run /login” — how to fix',
@@ -74,6 +74,11 @@ export const en = {
     check: 'Check cookie',
     converter: 'Cookie converter',
     getCredential: 'Get credential file',
+    convertShort: 'Convert',
+    checkShort: 'Check',
+    credentialsShort: 'Credentials',
+    docs: 'Docs',
+    guides: 'Guides',
     claudeCodeLogin: 'Claude Code login fix',
     claudeUsage: 'Claude usage limits',
     openMenu: 'Open menu',
@@ -197,7 +202,7 @@ export const en = {
       },
       {
         q: 'Is anything I paste sent to a server?',
-        a: 'The conversion itself runs entirely in JavaScript in your browser. The Check cookie page is different: it sends an encrypted paste to this site’s backend and to Anthropic. The site also records anonymous usage statistics — which formats are converted and how often — through Yandex Metrika. There is no Google Analytics.',
+        a: 'Converter input never leaves your device. The Check cookie and credential pages are different: the paste is encrypted in the browser, then sent to this site’s backend and to Anthropic. The site also records anonymous usage statistics — which formats are converted and how often — through Yandex Metrika. There is no Google Analytics.',
       },
       {
         q: 'Which JSON format should I pick?',
@@ -226,7 +231,9 @@ export const en = {
     tagline: 'A cookie format converter that runs entirely in your browser.',
     tools: 'Tools',
     converter: 'Converter',
-    checker: 'Check cookie',
+    checker: 'Session check',
+    credentials: 'Credentials',
+    guides: 'Guides',
     reference: 'Reference',
     about: 'About',
     disclaimer:
@@ -253,8 +260,10 @@ export const en = {
     checking: 'Checking…',
     clear: 'Clear',
     batchHeading: 'Checked',
-    valid: 'Valid cookie',
-    invalid: 'This cookie is not valid',
+    valid: 'Session active',
+    invalid: 'Session not valid',
+    trustEncrypt: 'Encrypted in the browser',
+    trustSend: 'Sent only for verification',
     reasons: {
       empty: 'Paste a cookie file first.',
       missing_session: 'No Claude sessionKey was found in this file.',
@@ -339,21 +348,57 @@ export const en = {
       },
       {
         q: 'Is it safe to paste my cookie here?',
-        a: 'The converter runs entirely in your browser. The session check is different: it has to send the cookie to this site’s backend and to Anthropic to run the check, so the paste is encrypted in your browser first. Only ever paste cookies for an account you control, and read the privacy page for exactly what happens.',
+        a: 'Converter input never leaves your device. The session check is different: it has to send the cookie to this site’s backend and to Anthropic, so the paste is encrypted in the browser first. Only ever paste cookies for an account you control, and read the privacy page for exactly what happens.',
       },
     ],
   },
 
+  credential: {
+    inputLabel: 'Cookie file',
+    placeholder:
+      'Netscape cookies.txt or a JSON cookie array. sessionKey / sessionKeyV3 is required. Paste several to check them as a batch.',
+    submit: 'Check cookie',
+    checking: 'Checking…',
+    converting: 'Converting…',
+    clear: 'Clear',
+    convert: 'Convert to credential',
+    cancel: 'Cancel',
+    stepPaste: 'Paste',
+    stepVerify: 'Verify',
+    stepGenerate: 'Generate',
+    captchaHint: 'Complete the check below to start the conversion.',
+    resultTitle: 'Credential file',
+    copy: 'Copy',
+    copied: 'Copied',
+    save: 'Save file',
+    secretNote:
+      'This file is a live login. Save it as ~/.claude/.credentials.json and treat it like a password. Close the tab when you are done.',
+    batchHeading: 'Checked',
+    error: 'The conversion did not complete. Try again.',
+    reasons: {
+      empty: 'Paste a cookie file first.',
+      missing_session: 'No Claude sessionKey was found in this file.',
+      expired: 'Claude rejected this session. Export a fresh cookie from a logged-in browser.',
+      unreachable: 'Claude did not answer. Try again in a moment.',
+      rate_limited: 'Too many attempts from this address. Wait a minute and try again.',
+      captcha_failed: 'The captcha did not pass. Try again.',
+      convert_failed: 'The session is valid, but a credential file could not be built.',
+    },
+  },
+
   checkPromo: {
-    eyebrow: 'Also here',
-    title: 'Is your Claude session cookie still alive?',
+    eyebrow: 'Session check',
+    title: 'Need to check a Claude session?',
     body: 'Paste a Claude session export and see in seconds whether it is live — the account, the plan, and how much of the 5-hour and weekly limits are left.',
-    cta: 'Open the checker',
+    cta: 'Check session',
   },
 
   common: {
     skipToContent: 'Skip to content',
     backToConverter: 'Back to the converter',
+    home: 'Home',
+    allTools: 'All tools',
+    guideBadge: 'Guide',
     onThisPage: 'On this page',
     example: 'Example',
     field: 'Field',
@@ -469,7 +514,15 @@ export const en = {
       title: 'Privacy',
       updated: 'Last updated',
       intro:
-        'Cookies are credentials. A session cookie is often enough to log in as you. The converter keeps that paste on your device. The Claude session check is a different tool: it has to send the cookie to this site and to Anthropic.',
+        'Cookies are credentials. A session cookie is often enough to log in as you. Converter input never leaves your device. The session check and credential tools encrypt the paste in the browser, then send it to this site and to Anthropic.',
+      flows: {
+        converterTitle: 'Converter',
+        converterSteps: ['Your browser', 'Parse / convert', 'Output'],
+        converterNote: 'Never leaves your device',
+        checkTitle: 'Check session and credentials',
+        checkSteps: ['Your browser', 'Encrypted paste', 'This site’s backend', 'Anthropic', 'Result'],
+        checkNote: 'Encrypted in the browser before it is sent',
+      },
       sections: [
         {
           title: 'The conversion happens in your browser',
@@ -478,6 +531,10 @@ export const en = {
         {
           title: 'The Claude session check leaves your browser',
           body: 'The Check cookie page sends an encrypted paste to this site’s own backend. That backend calls Claude with the session cookie to read the account, plan and usage windows.',
+        },
+        {
+          title: 'Getting a credential file also leaves your browser',
+          body: 'The credential page first runs the same encrypted check. If you then convert, the paste goes to this site’s backend and to Anthropic so a Claude Code credentials file can be minted. The file is returned to your browser. OAuth tokens are not stored on the server. Convert is gated by a Cloudflare Turnstile captcha.',
         },
         {
           title: 'Anonymous usage statistics',
@@ -489,7 +546,7 @@ export const en = {
         },
         {
           title: 'What the server logs',
-          body: 'The web server keeps standard access logs — IP address, timestamp, requested path, user agent. Those logs do not include the contents of a paste. Converter and checker payloads are encrypted in the browser before they leave the device.',
+          body: 'The web server keeps standard access logs — IP address, timestamp, requested path, user agent. Those logs do not include the contents of a paste. Converter input never leaves your device. Checker and credential pastes are encrypted in the browser before they are sent.',
         },
         {
           title: 'Language and geolocation',
@@ -507,25 +564,25 @@ export const en = {
 
     credential: {
       title: 'Get a credential file',
-      badge: 'In development',
+      badge: 'Claude Code',
       intro:
-        'Turn a Claude session into a credentials file — the kind Claude Code and the API read to sign in. Paste a cookie and get one back, with no manual token wrangling.',
-      leadTitle: 'How it will work',
+        'Turn a Claude session cookie into ~/.claude/.credentials.json — the file Claude Code reads to sign in. Paste any export, confirm the account, then convert.',
+      leadTitle: 'How it works',
       steps: [
         {
           title: 'Paste your cookie',
-          body: 'Drop a Claude session export and the credentials file is built from it automatically.',
+          body: 'Netscape, JSON, or a raw Cookie header. sessionKey or sessionKeyV3 is enough. Several sets can be checked together.',
         },
         {
-          title: 'Or sign in',
-          body: 'If a cookie cannot be converted, you authorize through a sign-in link and the server mints the file for you.',
+          title: 'Confirm the session',
+          body: 'A valid paste shows the email, plan, and the 5-hour and weekly limits before anything is converted.',
         },
         {
-          title: 'Download and use',
-          body: 'Save the credentials file and point Claude Code or the API at it. Nothing to copy by hand.',
+          title: 'Convert and save',
+          body: 'Pass the captcha, then copy or download .credentials.json and put it at ~/.claude/.credentials.json.',
         },
       ],
-      note: 'This tool is still being built. The converter and the cookie check are ready to use now.',
+      note: 'Only paste a session you control. The credential file is a live login — treat it like a password and close the tab when you are done.',
     },
 
     claudeCodeLogin: {
