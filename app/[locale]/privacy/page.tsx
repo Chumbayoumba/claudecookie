@@ -2,11 +2,11 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
-import { DataFlow } from '@/components/ui/DataFlow'
 import { Reveal } from '@/components/ui/Reveal'
 import { getDictionary } from '@/lib/i18n'
 import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
 import { buildBreadcrumbJsonLd, buildMetadata } from '@/lib/seo'
+import { cn } from '@/lib/utils/cn'
 
 const PATH = '/privacy'
 
@@ -46,7 +46,7 @@ export default async function PrivacyPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.common.home, path: '/' },
+          { name: dict.footer.docs, path: '/formats/netscape-cookies-txt' },
           { name: page.title, path: PATH },
         ])}
       />
@@ -55,10 +55,7 @@ export default async function PrivacyPage({ params }: PageProps) {
         locale={locale}
         title={page.title}
         intro={page.intro}
-        trail={[
-          { href: '/', label: dict.common.home },
-          { label: page.title },
-        ]}
+        trail={[{ label: dict.footer.docs }, { label: page.title }]}
       />
 
       <div className="ant-container pt-6 pb-16 lg:pt-8 lg:pb-24">
@@ -67,23 +64,29 @@ export default async function PrivacyPage({ params }: PageProps) {
             {page.updated}: <time dateTime={LAST_UPDATED}>{LAST_UPDATED}</time>
           </p>
 
-          <div className="mt-10 grid gap-4 sm:grid-cols-2">
-            <DataFlow
-              title={page.flows.converterTitle}
-              steps={page.flows.converterSteps}
-              note={page.flows.converterNote}
-            />
-            <DataFlow
-              title={page.flows.checkTitle}
-              steps={page.flows.checkSteps}
-              note={page.flows.checkNote}
-            />
-          </div>
+          <ul className="mt-10 divide-y divide-line border-y border-line">
+            {page.summary.map((row) => (
+              <li
+                key={row.label}
+                className="flex flex-col gap-1 py-4 sm:flex-row sm:items-baseline sm:justify-between sm:gap-8"
+              >
+                <p className="font-sans text-detail-s font-medium text-ink">{row.label}</p>
+                <p
+                  className={cn(
+                    'font-sans text-detail-s sm:text-right',
+                    row.leaves ? 'text-ink-secondary' : 'text-ok',
+                  )}
+                >
+                  {row.note}
+                </p>
+              </li>
+            ))}
+          </ul>
 
           <div className="mt-10 flex flex-col gap-10">
             {page.sections.map((section, i) => (
               <Reveal key={section.title} delay={i * 0.03}>
-                <section className="border-t border-line pt-8">
+                <section>
                   <h2 className="text-display-xs sm:text-display-s">{section.title}</h2>
                   <p className="mt-4 max-w-[62ch] text-paragraph-xs text-ink-secondary">
                     {section.body}
@@ -94,7 +97,7 @@ export default async function PrivacyPage({ params }: PageProps) {
           </div>
 
           <Reveal>
-            <section className="mt-16 rounded-large border border-line bg-bg-secondary p-8">
+            <section className="mt-16 border-t border-line pt-8">
               <h2 className="text-display-xs">{page.disclaimerTitle}</h2>
               <p className="mt-4 max-w-[62ch] text-paragraph-xs text-ink-secondary">
                 {page.disclaimerBody}

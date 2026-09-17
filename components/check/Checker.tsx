@@ -16,6 +16,7 @@ import { Pill } from '@/components/ui/Pill'
 import { cn } from '@/lib/utils/cn'
 
 const EASE = [0.165, 0.84, 0.44, 1] as const
+const RISE = { duration: 0.24, ease: EASE } as const
 
 interface CheckerProps {
   locale: Locale
@@ -90,7 +91,6 @@ export function Checker({ locale, dict }: CheckerProps) {
   return (
     <div className="flex flex-col gap-6">
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <TrustRow encrypt={dict.check.trustEncrypt} send={dict.check.trustSend} />
         <div
           className={cn(
             'overflow-hidden rounded-large border border-line bg-surface',
@@ -124,6 +124,9 @@ export function Checker({ locale, dict }: CheckerProps) {
               'placeholder:text-ink-faint focus:outline-none',
             )}
           />
+          <p className="border-t border-line px-4 py-2.5 font-sans text-detail-xs text-ink-faint">
+            {dict.check.formatsHint}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -143,6 +146,8 @@ export function Checker({ locale, dict }: CheckerProps) {
             {dict.check.clear}
           </Button>
         </div>
+
+        <TrustRow line={dict.check.trustLine} />
       </form>
 
       <AnimatePresence initial={false}>
@@ -152,7 +157,7 @@ export function Checker({ locale, dict }: CheckerProps) {
             initial={{ y: 8 }}
             animate={{ y: 0 }}
             exit={{ y: 6 }}
-            transition={{ duration: 0.28, ease: EASE }}
+            transition={RISE}
           >
             <StatusCard tone="error" title={dict.check.error} />
           </motion.div>
@@ -163,10 +168,10 @@ export function Checker({ locale, dict }: CheckerProps) {
         {results ? (
           <motion.div
             key={`n${results.length}-${results[0]?.ok ? 'v' : 'x'}`}
-            initial={{ y: 10 }}
+            initial={{ y: 8 }}
             animate={{ y: 0 }}
-            exit={{ y: 8 }}
-            transition={{ duration: 0.32, ease: EASE }}
+            exit={{ y: 6 }}
+            transition={RISE}
             className="flex flex-col gap-4"
           >
             {results.length > 1 ? (
@@ -215,12 +220,7 @@ export function CheckReport({
 
   return (
     <div className="flex flex-col gap-3">
-      <motion.section
-        initial={{ y: 8 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.3, ease: EASE }}
-        className="rounded-large border border-line bg-surface p-5 sm:p-6"
-      >
+      <section className="rounded-large border border-line bg-surface p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Pill tone="ok">
             <CheckIcon />
@@ -229,12 +229,7 @@ export function CheckReport({
           {result.planLabel ? <Pill tone="accent">{result.planLabel}</Pill> : null}
         </div>
 
-        <motion.dl
-          initial={{ y: 8 }}
-          animate={{ y: 0 }}
-          transition={{ duration: 0.3, delay: 0.06, ease: EASE }}
-          className="mt-5 grid gap-5 sm:grid-cols-2"
-        >
+        <dl className="mt-5 grid gap-5 sm:grid-cols-2">
           <div className="min-w-0">
             <dt className="font-sans text-detail-xs tracking-[0.06em] text-ink-faint uppercase">
               {dict.check.email}
@@ -252,18 +247,13 @@ export function CheckReport({
             </dt>
             <dd className="mt-1 truncate font-sans text-detail-l text-ink">{result.name || '—'}</dd>
           </div>
-        </motion.dl>
-      </motion.section>
+        </dl>
 
-      <motion.div
-        initial={{ y: 8 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.3, delay: 0.12, ease: EASE }}
-        className="grid gap-3 sm:grid-cols-2"
-      >
-        <UsageCard title={dict.check.session} window={result.session} dict={dict} />
-        <UsageCard title={dict.check.weekly} window={result.weekly} dict={dict} />
-      </motion.div>
+        <div className="mt-6 grid gap-5 border-t border-line pt-5 sm:grid-cols-2">
+          <UsageCard title={dict.check.session} window={result.session} dict={dict} />
+          <UsageCard title={dict.check.weekly} window={result.weekly} dict={dict} />
+        </div>
+      </section>
 
       {footer ? <div className="flex flex-col gap-3">{footer}</div> : null}
     </div>
@@ -280,12 +270,19 @@ function StatusCard({
   body?: string
 }) {
   return (
-    <section className="rounded-large border border-line bg-surface p-5 sm:p-6">
+    <section
+      className={cn(
+        'rounded-large p-5 sm:p-6',
+        tone === 'error' ? 'border border-error/30 bg-error/8' : 'border border-line bg-surface',
+      )}
+    >
       <div className="flex items-start gap-3">
         <span
           className={cn(
-            'mt-0.5 grid size-9 shrink-0 place-items-center rounded-main border border-line bg-bg-secondary',
-            tone === 'error' ? 'text-error' : 'text-ok',
+            'mt-0.5 grid size-9 shrink-0 place-items-center rounded-main',
+            tone === 'error'
+              ? 'border border-error/30 bg-error/10 text-error'
+              : 'border border-line bg-bg-secondary text-ok',
           )}
         >
           {tone === 'error' ? <MarkBad /> : <MarkOk />}

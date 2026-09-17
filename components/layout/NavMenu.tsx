@@ -35,9 +35,10 @@ export function NavMenu({ label, items }: NavMenuProps) {
         aria-haspopup="true"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'inline-flex items-center gap-1 rounded-main px-3 py-2',
+          'inline-flex items-center gap-1 px-2.5 py-1.5',
           'font-sans text-detail-s font-medium text-ink-secondary',
-          'transition-colors duration-200 ease-ant hover:bg-surface-hover hover:text-ink',
+          'transition-colors duration-200 ease-ant hover:text-ink',
+          open && 'text-ink',
         )}
       >
         {label}
@@ -52,12 +53,12 @@ export function NavMenu({ label, items }: NavMenuProps) {
         </svg>
       </button>
       {open ? (
-        <div className="absolute top-full left-0 z-50 mt-1 min-w-52 rounded-large border border-line bg-surface p-1 shadow-sm">
+        <div className="absolute top-full left-0 z-50 mt-1.5 min-w-52 rounded-main border border-line bg-surface p-1">
           {items.map((item) => (
             <a
               key={item.href}
               href={item.href}
-              className="block rounded-main px-3 py-2 font-sans text-detail-s text-ink-secondary transition-colors duration-200 ease-ant hover:bg-surface-hover hover:text-ink"
+              className="block rounded-main px-3 py-2 font-sans text-detail-s text-ink-secondary transition-colors duration-200 ease-ant hover:text-ink"
             >
               {item.label}
             </a>

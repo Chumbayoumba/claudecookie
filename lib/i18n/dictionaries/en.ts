@@ -74,7 +74,7 @@ export const en = {
     check: 'Check cookie',
     converter: 'Cookie converter',
     getCredential: 'Get credential file',
-    convertShort: 'Convert',
+    convertShort: 'Converter',
     checkShort: 'Check',
     credentialsShort: 'Credentials',
     docs: 'Docs',
@@ -91,10 +91,10 @@ export const en = {
 
   hero: {
     eyebrow: 'Cookie converter',
-    title: 'Convert cookies between Netscape cookies.txt and JSON.',
-    subtitle:
-      'cookies.txt to JSON and back — Cookie-Editor, Puppeteer, key-value, or a raw Cookie header. Paste it and the format is worked out for you. Cookies, in whatever format you need them.',
-    privacy: 'The conversion runs entirely in your browser.',
+    title: 'Convert cookies.',
+    subtitle: 'Without sending them anywhere.',
+    formats: 'Netscape cookies.txt ↔ JSON ↔ Cookie-Editor ↔ Puppeteer ↔ Cookie header',
+    privacy: 'Runs entirely in your browser',
   },
 
   home: {
@@ -109,7 +109,7 @@ export const en = {
     awaiting: 'Waiting for input',
     unknown: 'Not recognised',
     convertTo: 'Convert to',
-    convert: 'Convert',
+    convert: 'Convert cookies',
     swap: 'Swap direction',
     batchSets: 'cookie sets',
     combine: 'Combine into one file',
@@ -234,8 +234,7 @@ export const en = {
     checker: 'Session check',
     credentials: 'Credentials',
     guides: 'Guides',
-    reference: 'Reference',
-    about: 'About',
+    docs: 'Docs',
     disclaimer:
       'Not affiliated with, endorsed by, or connected to Anthropic. Claude is a trademark of Anthropic PBC.',
     geoAttribution: 'IP geolocation by DB-IP',
@@ -249,21 +248,23 @@ export const en = {
   },
 
   check: {
-    eyebrow: 'Claude session',
-    title: 'Check a Claude sessionKey cookie: is it still valid?',
+    eyebrow: 'Check session',
+    title: 'Is this Claude session still valid?',
     subtitle:
       'Paste a Netscape or JSON export. The check reads the account, plan, and the 5-hour and weekly usage windows — the same numbers Claude shows in Settings.',
     inputLabel: 'Cookie file',
     placeholder:
       'Netscape cookies.txt or a JSON cookie array. sessionKey / sessionKeyV3 is required. Paste several to check them as a batch.',
-    submit: 'Check cookie',
+    submit: 'Check session',
     checking: 'Checking…',
     clear: 'Clear',
     batchHeading: 'Checked',
-    valid: 'Session active',
+    valid: 'Session valid',
     invalid: 'Session not valid',
     trustEncrypt: 'Encrypted in the browser',
     trustSend: 'Sent only for verification',
+    trustLine: 'Encrypted in your browser before it is sent',
+    formatsHint: 'Netscape · JSON · sessionKey',
     reasons: {
       empty: 'Paste a cookie file first.',
       missing_session: 'No Claude sessionKey was found in this file.',
@@ -357,20 +358,24 @@ export const en = {
     inputLabel: 'Cookie file',
     placeholder:
       'Netscape cookies.txt or a JSON cookie array. sessionKey / sessionKeyV3 is required. Paste several to check them as a batch.',
-    submit: 'Check cookie',
+    submit: 'Verify session',
     checking: 'Checking…',
-    converting: 'Converting…',
+    converting: 'Generating…',
     clear: 'Clear',
-    convert: 'Convert to credential',
+    convert: 'Generate credentials',
     cancel: 'Cancel',
     stepPaste: 'Paste',
     stepVerify: 'Verify',
     stepGenerate: 'Generate',
+    pasteTitle: 'Paste your Claude cookie',
+    verified: 'Session verified',
+    ready: 'Credentials ready',
+    placeAt: 'Place at',
     captchaHint: 'Complete the check below to start the conversion.',
     resultTitle: 'Credential file',
     copy: 'Copy',
     copied: 'Copied',
-    save: 'Save file',
+    save: 'Download file',
     secretNote:
       'This file is a live login. Save it as ~/.claude/.credentials.json and treat it like a password. Close the tab when you are done.',
     batchHeading: 'Checked',
@@ -386,18 +391,22 @@ export const en = {
     },
   },
 
-  checkPromo: {
-    eyebrow: 'Session check',
-    title: 'Need to check a Claude session?',
-    body: 'Paste a Claude session export and see in seconds whether it is live — the account, the plan, and how much of the 5-hour and weekly limits are left.',
-    cta: 'Check session',
+  moreTools: {
+    title: 'More tools',
+    checkTitle: 'Check Claude session',
+    checkBody: 'Verify your session and see plan + usage limits.',
+    checkCta: 'Open checker',
+    credTitle: 'Create Claude credentials',
+    credBody: 'Turn a valid session into .credentials.json',
+    credCta: 'Create credentials',
   },
 
   common: {
     skipToContent: 'Skip to content',
-    backToConverter: 'Back to the converter',
     home: 'Home',
-    allTools: 'All tools',
+    tools: 'Tools',
+    cookieFormats: 'Cookie formats',
+    minRead: 'min read',
     guideBadge: 'Guide',
     onThisPage: 'On this page',
     example: 'Example',
@@ -419,6 +428,9 @@ export const en = {
       title: 'The Netscape cookies.txt format',
       intro:
         'The format every command-line tool still speaks. One cookie per line, seven fields, separated by tabs — not spaces. Lines beginning with # are comments, with one deliberate exception.',
+      chips: ['7 fields', 'Tab-separated', 'One cookie per line'],
+      tabWarningTitle: 'Tabs, not spaces',
+      tabWarningBody: 'Strict readers may reject files where tabs were replaced with spaces.',
       fieldsTitle: 'The seven fields',
       fields: [
         {
@@ -482,24 +494,28 @@ export const en = {
       entries: [
         {
           id: 'cookie-editor',
+          tab: 'Cookie-Editor',
           title: 'Cookie-Editor and EditThisCookie',
           body: 'What the browser extensions export. The most complete of the four: it stores every attribute a browser cookie has, including hostOnly and the session flag. sameSite uses the words no_restriction, lax, strict and unspecified.',
           usedBy: 'Cookie-Editor, EditThisCookie, Cookie Quick Manager',
         },
         {
           id: 'puppeteer',
+          tab: 'Puppeteer',
           title: 'Puppeteer and Playwright',
           body: 'What page.setCookie() and context.addCookies() accept. Expiry is called expires and uses -1 for session cookies. sameSite uses the HTTP spelling: None, Lax and Strict. Omitting sameSite lets the browser apply its own default, so we leave it out when it is unspecified.',
           usedBy: 'Puppeteer, Playwright, Selenium wrappers',
         },
         {
           id: 'key-value',
+          tab: 'Key-value',
           title: 'Key-value map',
           body: 'A flat object of names to values. This is what you hand to a requests session or an axios config. It stores nothing else at all — no domain, no expiry, no flags.',
           usedBy: 'Python requests, axios, fetch wrappers',
         },
         {
           id: 'header',
+          tab: 'Header',
           title: 'Cookie header string',
           body: 'Not JSON, but it belongs in the same conversation: the literal value of a Cookie request header. Pairs joined by a semicolon and a space. This is what you paste after curl -H or into Postman.',
           usedBy: 'curl, Postman, HTTPie, browser DevTools',
@@ -515,6 +531,11 @@ export const en = {
       updated: 'Last updated',
       intro:
         'Cookies are credentials. A session cookie is often enough to log in as you. Converter input never leaves your device. The session check and credential tools encrypt the paste in the browser, then send it to this site and to Anthropic.',
+      summary: [
+        { label: 'Converter', note: 'Never leaves your browser', leaves: false },
+        { label: 'Session checker', note: 'Encrypted and sent for verification', leaves: true },
+        { label: 'Credentials', note: 'Verified server-side, tokens are not stored', leaves: true },
+      ],
       flows: {
         converterTitle: 'Converter',
         converterSteps: ['Your browser', 'Parse / convert', 'Output'],
@@ -563,10 +584,10 @@ export const en = {
     },
 
     credential: {
-      title: 'Get a credential file',
+      title: 'Create a credentials file',
       badge: 'Claude Code',
       intro:
-        'Turn a Claude session cookie into ~/.claude/.credentials.json — the file Claude Code reads to sign in. Paste any export, confirm the account, then convert.',
+        'Verify the account first, then generate ~/.claude/.credentials.json from your Claude session.',
       leadTitle: 'How it works',
       steps: [
         {
@@ -590,6 +611,7 @@ export const en = {
       intro:
         'Claude Code stops mid-task with “Your session has expired. Please run /login”, or it silently drops back to a login prompt every few hours. Here is what that message actually means and the fixes that work, in order.',
       updated: '2026-09-14',
+      readMinutes: 6,
       sections: [
         {
           title: 'What “session expired” actually means',
@@ -661,6 +683,7 @@ export const en = {
       intro:
         'Claude Pro and Max cap usage with two separate windows, and hitting “Claude usage limit reached” with no clear reason is one of the most common frustrations. Here is exactly how the two limits work, why one pool drains faster than you expect, and when each resets.',
       updated: '2026-09-14',
+      readMinutes: 8,
       sections: [
         {
           title: 'Two limits: a rolling 5-hour window and a fixed weekly window',

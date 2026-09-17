@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { Accordion } from '@/components/ui/Accordion'
 import { Reveal } from '@/components/ui/Reveal'
+import { getDictionary } from '@/lib/i18n'
 import { localePath, type Locale } from '@/lib/i18n/config'
 import { buildGuideJsonLd } from '@/lib/seo'
 
@@ -15,6 +16,7 @@ export interface GuideContent {
   intro: string
   /** ISO date (YYYY-MM-DD), also fed to the TechArticle dateModified. */
   updated: string
+  readMinutes: number
   sections: { title: string; body: string }[]
   faqTitle: string
   faq: { q: string; a: string }[]
@@ -57,13 +59,12 @@ export function GuidePage({
   description,
   datePublished,
   ctaPath,
-  homeLabel,
   guidesLabel,
   badge,
   onThisPage,
-  updatedLabel,
   illustration,
 }: GuidePageProps) {
+  const dict = getDictionary(locale)
   const faqId = 'faq'
   const sourcesId = sectionId(guide.sourcesTitle, 90)
   const toc = [
@@ -84,7 +85,7 @@ export function GuidePage({
     dateModified: guide.updated,
     faq: guide.faq,
     trail: [
-      { name: homeLabel, path: '/' },
+      { name: guidesLabel, path },
       { name: guide.title, path },
     ],
   })
@@ -98,18 +99,14 @@ export function GuidePage({
         title={guide.title}
         intro={guide.intro}
         badge={badge}
-        trail={[
-          { href: '/', label: homeLabel },
-          { label: guidesLabel },
-          { label: guide.title },
-        ]}
+        trail={[{ label: guidesLabel }, { label: guide.title }]}
       />
 
       <article className="ant-container pt-6 pb-16 lg:pb-24">
-        <div className="lg:grid lg:grid-cols-[minmax(0,42rem)_14rem] lg:items-start lg:gap-16">
-          <div className="max-w-[var(--container-prose)]">
+        <div className="lg:grid lg:grid-cols-[minmax(0,45rem)_14rem] lg:items-start lg:gap-16">
+          <div className="max-w-[45rem]">
             <p className="font-sans text-detail-xs text-ink-faint">
-              {updatedLabel}: {guide.updated}
+              {guide.readMinutes} {dict.common.minRead} · {guide.updated}
             </p>
 
             {illustration && (
@@ -160,7 +157,7 @@ export function GuidePage({
           <GuideToc label={onThisPage} items={toc} />
         </div>
 
-        <div id={faqId} className="mt-14 max-w-3xl scroll-mt-28">
+        <div id={faqId} className="mt-14 max-w-[45rem] scroll-mt-28">
           <Reveal>
             <h2 className="text-display-s sm:text-display-m">{guide.faqTitle}</h2>
           </Reveal>
@@ -172,7 +169,7 @@ export function GuidePage({
         </div>
 
         <Reveal>
-          <div className="mt-14 flex max-w-3xl flex-col gap-5 rounded-large border border-line bg-bg-secondary p-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-14 flex max-w-[45rem] flex-col gap-5 rounded-large border border-line bg-bg-secondary p-8 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-display-xs">{guide.ctaTitle}</h2>
               <p className="mt-2 text-paragraph-xs text-ink-secondary">{guide.ctaBody}</p>

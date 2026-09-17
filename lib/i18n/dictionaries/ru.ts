@@ -70,10 +70,10 @@ export const ru: Dictionary = {
 
   hero: {
     eyebrow: 'Конвертер cookies',
-    title: 'Конвертер cookies: cookies.txt в JSON и обратно',
-    subtitle:
-      'Netscape cookies.txt в JSON и обратно — Cookie-Editor, Puppeteer, key-value или готовая строка заголовка Cookie. Просто вставьте, формат определится сам. Куки — в том формате, который вам нужен.',
-    privacy: 'Конвертация выполняется целиком в вашем браузере.',
+    title: 'Конвертируйте cookies.',
+    subtitle: 'Никуда их не отправляя.',
+    formats: 'Netscape cookies.txt ↔ JSON ↔ Cookie-Editor ↔ Puppeteer ↔ Cookie header',
+    privacy: 'Работает целиком в вашем браузере',
   },
 
   home: {
@@ -88,7 +88,7 @@ export const ru: Dictionary = {
     awaiting: 'Ожидание ввода',
     unknown: 'Формат не распознан',
     convertTo: 'Конвертировать в',
-    convert: 'Конвертировать',
+    convert: 'Конвертировать cookies',
     swap: 'Поменять направление',
     batchSets: 'наборов',
     combine: 'Объединить в один файл',
@@ -225,8 +225,7 @@ export const ru: Dictionary = {
     checker: 'Проверка сессии',
     credentials: 'Credential',
     guides: 'Гайды',
-    reference: 'Справочник',
-    about: 'О сайте',
+    docs: 'Справка',
     disclaimer:
       'Сайт не связан с Anthropic и не одобрен ею. Claude — товарный знак Anthropic PBC.',
     geoAttribution: 'Геолокация по IP — DB-IP',
@@ -240,21 +239,23 @@ export const ru: Dictionary = {
   },
 
   check: {
-    eyebrow: 'Сессия Claude',
-    title: 'Проверка cookie Claude: жива ли сессия',
+    eyebrow: 'Проверка сессии',
+    title: 'Эта сессия Claude ещё действительна?',
     subtitle:
       'Вставьте Netscape или JSON. Проверка читает аккаунт, план и окна использования за 5 часов и за неделю — те же цифры, что Claude показывает в настройках.',
     inputLabel: 'Файл куки',
     placeholder:
       'Netscape cookies.txt или JSON-массив. Нужен sessionKey / sessionKeyV3. Вставьте несколько — проверю пачкой.',
-    submit: 'Проверить куку',
+    submit: 'Проверить сессию',
     checking: 'Проверяю…',
     clear: 'Очистить',
     batchHeading: 'Проверено',
-    valid: 'Сессия жива',
+    valid: 'Сессия действительна',
     invalid: 'Сессия недействительна',
     trustEncrypt: 'Шифруется в браузере',
     trustSend: 'Уходит только на проверку',
+    trustLine: 'Шифруется в браузере до отправки',
+    formatsHint: 'Netscape · JSON · sessionKey',
     reasons: {
       empty: 'Сначала вставьте файл куки.',
       missing_session: 'В файле нет sessionKey от Claude.',
@@ -348,20 +349,24 @@ export const ru: Dictionary = {
     inputLabel: 'Файл cookie',
     placeholder:
       'Netscape cookies.txt или JSON-массив. Нужен sessionKey / sessionKeyV3. Вставьте несколько — проверю пачкой.',
-    submit: 'Проверить cookie',
+    submit: 'Подтвердить сессию',
     checking: 'Проверяю…',
-    converting: 'Конвертирую…',
+    converting: 'Создаю…',
     clear: 'Очистить',
-    convert: 'Конвертировать в credential',
+    convert: 'Создать credentials',
     cancel: 'Отмена',
     stepPaste: 'Вставка',
     stepVerify: 'Проверка',
     stepGenerate: 'Файл',
+    pasteTitle: 'Вставьте cookie Claude',
+    verified: 'Сессия подтверждена',
+    ready: 'Credentials готовы',
+    placeAt: 'Положить в',
     captchaHint: 'Пройдите проверку ниже, чтобы начать конвертацию.',
     resultTitle: 'Credential-файл',
     copy: 'Скопировать',
     copied: 'Скопировано',
-    save: 'Сохранить файл',
+    save: 'Скачать файл',
     secretNote:
       'Это живой вход. Сохраните файл как ~/.claude/.credentials.json и относитесь к нему как к паролю. Закройте вкладку, когда закончите.',
     batchHeading: 'Проверено',
@@ -377,18 +382,22 @@ export const ru: Dictionary = {
     },
   },
 
-  checkPromo: {
-    eyebrow: 'Проверка сессии',
-    title: 'Нужно проверить сессию Claude?',
-    body: 'Вставьте экспорт сессии Claude и за секунды узнайте, работает ли она — аккаунт, тариф и сколько осталось от 5‑часового и недельного лимитов.',
-    cta: 'Проверить сессию',
+  moreTools: {
+    title: 'Другие инструменты',
+    checkTitle: 'Проверить сессию Claude',
+    checkBody: 'Проверьте сессию и посмотрите тариф и лимиты.',
+    checkCta: 'Открыть проверку',
+    credTitle: 'Создать credentials Claude',
+    credBody: 'Превратите действительную сессию в .credentials.json',
+    credCta: 'Создать credentials',
   },
 
   common: {
     skipToContent: 'Перейти к содержимому',
-    backToConverter: 'Вернуться к конвертеру',
     home: 'Главная',
-    allTools: 'Все инструменты',
+    tools: 'Инструменты',
+    cookieFormats: 'Форматы cookies',
+    minRead: 'мин чтения',
     guideBadge: 'Гайд',
     onThisPage: 'На этой странице',
     example: 'Пример',
@@ -410,6 +419,9 @@ export const ru: Dictionary = {
       title: 'Формат Netscape cookies.txt',
       intro:
         'Формат, на котором до сих пор говорят все консольные инструменты. Одна кука — одна строка, семь полей, разделённых табуляцией, а не пробелами. Строки, начинающиеся с #, считаются комментариями — с одним намеренным исключением.',
+      chips: ['7 полей', 'Разделены табуляцией', 'Одна кука на строку'],
+      tabWarningTitle: 'Табуляция, не пробелы',
+      tabWarningBody: 'Строгие парсеры могут отклонить файлы, в которых табуляцию заменили пробелами.',
       fieldsTitle: 'Семь полей',
       fields: [
         {
@@ -473,24 +485,28 @@ export const ru: Dictionary = {
       entries: [
         {
           id: 'cookie-editor',
+          tab: 'Cookie-Editor',
           title: 'Cookie-Editor и EditThisCookie',
           body: 'То, что экспортируют браузерные расширения. Самый полный из четырёх: хранит все атрибуты браузерной куки, включая hostOnly и флаг session. Для sameSite используются слова no_restriction, lax, strict и unspecified.',
           usedBy: 'Cookie-Editor, EditThisCookie, Cookie Quick Manager',
         },
         {
           id: 'puppeteer',
+          tab: 'Puppeteer',
           title: 'Puppeteer и Playwright',
           body: 'То, что принимают page.setCookie() и context.addCookies(). Срок жизни называется expires, для сессионных кук используется -1. Для sameSite берётся HTTP-написание: None, Lax и Strict. Если sameSite опустить, браузер применит собственное значение по умолчанию, поэтому при unspecified мы поле не пишем вовсе.',
           usedBy: 'Puppeteer, Playwright, обёртки над Selenium',
         },
         {
           id: 'key-value',
+          tab: 'Key-value',
           title: 'Словарь key-value',
           body: 'Плоский объект «имя — значение». Именно его передают в сессию requests или в конфиг axios. Больше он не хранит ничего: ни домена, ни срока жизни, ни флагов.',
           usedBy: 'Python requests, axios, обёртки над fetch',
         },
         {
           id: 'header',
+          tab: 'Header',
           title: 'Строка заголовка Cookie',
           body: 'Формально это не JSON, но разговор тот же: дословное значение заголовка запроса Cookie. Пары через точку с запятой и пробел. Это то, что вставляют после curl -H или в Postman.',
           usedBy: 'curl, Postman, HTTPie, DevTools браузера',
@@ -506,6 +522,11 @@ export const ru: Dictionary = {
       updated: 'Обновлено',
       intro:
         'Куки — это учётные данные. Одной сессионной куки часто достаточно, чтобы войти под вашим аккаунтом. Вставка конвертера с устройства не уходит. Проверка сессии и credential шифруют вставку в браузере и отправляют её на этот сайт и в Anthropic.',
+      summary: [
+        { label: 'Конвертер', note: 'Не покидает браузер', leaves: false },
+        { label: 'Проверка сессии', note: 'Шифруется и уходит на проверку', leaves: true },
+        { label: 'Credential', note: 'Проверяется на сервере, токены не хранятся', leaves: true },
+      ],
       flows: {
         converterTitle: 'Конвертер',
         converterSteps: ['Ваш браузер', 'Разбор / конвертация', 'Результат'],
@@ -554,10 +575,10 @@ export const ru: Dictionary = {
     },
 
     credential: {
-      title: 'Получить credential-файл',
+      title: 'Создать файл credentials',
       badge: 'Claude Code',
       intro:
-        'Превратите сессионную куку Claude в ~/.claude/.credentials.json — файл, который Claude Code читает для входа. Вставьте любой экспорт, подтвердите аккаунт и конвертируйте.',
+        'Сначала подтвердите аккаунт, затем создайте ~/.claude/.credentials.json из сессии Claude.',
       leadTitle: 'Как это работает',
       steps: [
         {
@@ -581,6 +602,7 @@ export const ru: Dictionary = {
       intro:
         'Claude Code останавливается посреди задачи с сообщением «Your session has expired. Please run /login» или сам скатывается к запросу входа каждые несколько часов. Разбираем, что на самом деле значит это сообщение, и решения — по порядку, от простого к крайнему.',
       updated: '2026-09-14',
+      readMinutes: 6,
       sections: [
         {
           title: 'Что на самом деле значит «сессия истекла»',
@@ -652,6 +674,7 @@ export const ru: Dictionary = {
       intro:
         'Claude Pro и Max ограничивают использование двумя разными окнами, и надпись «Claude usage limit reached» без внятной причины — одна из самых частых проблем. Разбираем, как именно работают оба лимита, почему общий пул расходуется быстрее, чем кажется, и когда каждое окно сбрасывается.',
       updated: '2026-09-14',
+      readMinutes: 8,
       sections: [
         {
           title: 'Два лимита: скользящее окно 5 часов и фиксированное недельное',

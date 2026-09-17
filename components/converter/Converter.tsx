@@ -155,163 +155,167 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
   const isDirty = input !== committed
   const hasInput = input.trim().length > 0
 
+  const inputPanel = (
+    <InputPanel
+      value={input}
+      onChange={handleInput}
+      onSample={handleSample}
+      onFileError={setFileError}
+      detected={detection.format}
+      confidence={detection.confidence}
+      dict={dict}
+    />
+  )
+
   return (
     <div className="relative z-10">
-      {!isBatch ? (
-        <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:gap-4">
-          <InputPanel
-            value={input}
-            onChange={handleInput}
-            onSample={handleSample}
-            onFileError={setFileError}
-            detected={detection.format}
-            confidence={detection.confidence}
-            dict={dict}
-          />
+      <div className="flex flex-col overflow-hidden rounded-large border border-line-tool bg-surface">
+        {!isBatch ? (
+          <div className="flex flex-col items-stretch lg:flex-row">
+            {inputPanel}
 
-          <div className="flex shrink-0 items-center justify-center lg:pt-16">
-            <SwapButton
-              onSwap={handleSwap}
-              disabled={!result.ok || !result.output}
-              label={dict.converter.swap}
-            />
-          </div>
-
-          <OutputPanel
-            output={result.output}
-            target={effectiveTarget}
-            onTargetChange={setTarget}
-            flashKey={flashKey}
-            dict={dict}
-          />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4">
-          <InputPanel
-            value={input}
-            onChange={handleInput}
-            onSample={handleSample}
-            onFileError={setFileError}
-            detected={detection.format}
-            confidence={detection.confidence}
-            dict={dict}
-          />
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-main border border-line bg-bg-secondary px-4 py-2.5">
-            <span className="font-sans text-detail-s text-ink-secondary">
-              <b>{sets.length}</b> {dict.converter.batchSets}
-            </span>
-            <div className="flex gap-1 rounded-main bg-surface p-0.5">
-              {[
-                { on: false, label: dict.converter.separate },
-                { on: true, label: dict.converter.combine },
-              ].map((opt) => (
-                <button
-                  key={String(opt.on)}
-                  type="button"
-                  onClick={() => setCombine(opt.on)}
-                  className={cn(
-                    'rounded-main px-3 py-1.5 font-sans text-detail-s transition-colors duration-150 ease-ant',
-                    combine === opt.on
-                      ? 'bg-clay text-clay-contrast'
-                      : 'text-ink-secondary hover:text-ink',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            <div className="flex shrink-0 items-center justify-center border-y border-line py-2 lg:border-x lg:border-y-0 lg:px-2">
+              <SwapButton
+                onSwap={handleSwap}
+                disabled={!result.ok || !result.output}
+                label={dict.converter.swap}
+              />
             </div>
-          </div>
 
-          {combine && combinedResult ? (
             <OutputPanel
-              output={combinedResult.output}
+              output={result.output}
               target={effectiveTarget}
               onTargetChange={setTarget}
               flashKey={flashKey}
               dict={dict}
             />
-          ) : (
-            <div className="flex flex-col gap-4">
-              {batchResults.map((r, i) => (
-                <div key={i}>
-                  <p className="mb-1.5 font-sans text-detail-xs text-ink-faint">
-                    {dict.converter.setWord} {i + 1}
-                    {r.detected ? ` · ${r.detected}` : ''}
-                  </p>
-                  <OutputPanel
-                    output={r.output}
-                    target={effectiveTarget}
-                    onTargetChange={setTarget}
-                    flashKey={flashKey}
-                    dict={dict}
-                  />
-                </div>
-              ))}
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            {inputPanel}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-bg px-4 py-2.5">
+              <span className="font-sans text-detail-s text-ink-secondary">
+                <b>{sets.length}</b> {dict.converter.batchSets}
+              </span>
+              <div className="flex gap-1 rounded-main bg-surface p-0.5">
+                {[
+                  { on: false, label: dict.converter.separate },
+                  { on: true, label: dict.converter.combine },
+                ].map((opt) => (
+                  <button
+                    key={String(opt.on)}
+                    type="button"
+                    onClick={() => setCombine(opt.on)}
+                    className={cn(
+                      'rounded-main px-3 py-1.5 font-sans text-detail-s transition-colors duration-150 ease-ant',
+                      combine === opt.on
+                        ? 'bg-clay text-clay-contrast'
+                        : 'text-ink-secondary hover:text-ink',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {combine && combinedResult ? (
+              <div className="border-t border-line">
+                <OutputPanel
+                  output={combinedResult.output}
+                  target={effectiveTarget}
+                  onTargetChange={setTarget}
+                  flashKey={flashKey}
+                  dict={dict}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col">
+                {batchResults.map((r, i) => (
+                  <div key={i} className="border-t border-line">
+                    <p className="px-4 pt-3 font-sans text-detail-xs text-ink-faint">
+                      {dict.converter.setWord} {i + 1}
+                      {r.detected ? ` · ${r.detected}` : ''}
+                    </p>
+                    <OutputPanel
+                      output={r.output}
+                      target={effectiveTarget}
+                      onTargetChange={setTarget}
+                      flashKey={flashKey}
+                      dict={dict}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="border-t border-line">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleConvert}
+              disabled={!hasInput}
+              className={cn(
+                'min-w-[9rem]',
+                // A quiet pulse while the debounce is still pending, so the button
+                // looks like it has something to do rather than being decorative.
+                isDirty && 'animate-pulse',
+              )}
+            >
+              {dict.converter.convert}
+            </Button>
+
+            <AnimatePresence initial={false}>
+              {needsDomain && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.3, ease: [0.165, 0.84, 0.44, 1] }}
+                  className="flex min-w-0 items-center gap-2 overflow-hidden"
+                >
+                  <label
+                    htmlFor="default-domain"
+                    className="font-sans text-detail-s whitespace-nowrap text-ink-secondary"
+                  >
+                    {dict.converter.defaultDomain}
+                  </label>
+                  <input
+                    id="default-domain"
+                    type="text"
+                    value={defaultDomain}
+                    onChange={(e) => setDefaultDomain(e.target.value)}
+                    placeholder={dict.converter.defaultDomainPlaceholder}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className={cn(
+                      'h-10 w-44 rounded-main border border-line bg-bg px-3',
+                      'font-mono text-detail-s text-ink placeholder:text-ink-faint',
+                      'transition-colors duration-200 ease-ant',
+                      'focus:border-clay focus:outline-none',
+                    )}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {needsDomain && (
+            <p className="px-4 pb-2 font-sans text-detail-xs text-ink-faint">
+              {dict.converter.defaultDomainHint}
+            </p>
           )}
         </div>
-      )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button
-          variant="primary"
-          size="lg"
-          onClick={handleConvert}
-          disabled={!hasInput}
-          className={cn(
-            'min-w-[9rem]',
-            // A quiet pulse while the debounce is still pending, so the button
-            // looks like it has something to do rather than being decorative.
-            isDirty && 'animate-pulse',
-          )}
-        >
-          {dict.converter.convert}
-        </Button>
-
-        <AnimatePresence initial={false}>
-          {needsDomain && (
-            <motion.div
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: 'auto' }}
-              exit={{ opacity: 0, width: 0 }}
-              transition={{ duration: 0.3, ease: [0.165, 0.84, 0.44, 1] }}
-              className="flex min-w-0 items-center gap-2 overflow-hidden"
-            >
-              <label
-                htmlFor="default-domain"
-                className="font-sans text-detail-s whitespace-nowrap text-ink-secondary"
-              >
-                {dict.converter.defaultDomain}
-              </label>
-              <input
-                id="default-domain"
-                type="text"
-                value={defaultDomain}
-                onChange={(e) => setDefaultDomain(e.target.value)}
-                placeholder={dict.converter.defaultDomainPlaceholder}
-                spellCheck={false}
-                autoComplete="off"
-                className={cn(
-                  'h-10 w-44 rounded-main border border-line bg-surface px-3',
-                  'font-mono text-detail-s text-ink placeholder:text-ink-faint',
-                  'transition-colors duration-200 ease-ant',
-                  'focus:border-clay focus:outline-none',
-                )}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="max-lg:border-t max-lg:border-line px-4 pb-4">
+          <IssueList issues={issues} dict={dict} />
+          <StatsBar stats={result.stats} visible={result.ok && !isBatch} locale={locale} dict={dict} />
+        </div>
       </div>
-
-      {needsDomain && (
-        <p className="mt-2 max-w-2xl font-sans text-detail-xs text-ink-faint">
-          {dict.converter.defaultDomainHint}
-        </p>
-      )}
-
-      <IssueList issues={issues} dict={dict} />
-      <StatsBar stats={result.stats} visible={result.ok && !isBatch} locale={locale} dict={dict} />
     </div>
   )
 }

@@ -22,6 +22,7 @@ export function CredentialSteps({ current, paste, verify, generate }: Credential
         return (
           <li key={step.n} className="flex min-w-0 items-center gap-2 sm:gap-3">
             <span
+              aria-current={active ? 'step' : undefined}
               className={cn(
                 'inline-flex items-center gap-2 font-sans text-detail-s',
                 active ? 'font-medium text-ink' : done ? 'text-ink-secondary' : 'text-ink-faint',

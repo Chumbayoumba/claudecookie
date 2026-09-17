@@ -52,8 +52,8 @@ export default async function CheckPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.common.allTools, path: '/' },
-          { name: dict.nav.check, path: PATH },
+          { name: dict.common.tools, path: '/' },
+          { name: dict.check.submit, path: PATH },
         ])}
       />
       <JsonLd data={jsonLd} />
@@ -62,9 +62,10 @@ export default async function CheckPage({ params }: PageProps) {
         locale={locale}
         title={dict.check.title}
         intro={dict.check.subtitle}
+        badge={dict.check.eyebrow}
         trail={[
-          { href: '/', label: dict.common.allTools },
-          { label: dict.nav.check },
+          { href: '/', label: dict.common.tools },
+          { label: dict.check.submit },
         ]}
       />
 
@@ -92,15 +93,17 @@ export default async function CheckPage({ params }: PageProps) {
           <h2 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
             {dict.check.readsTitle}
           </h2>
-          <div className="mt-6 grid gap-px overflow-hidden rounded-large border border-line bg-line sm:grid-cols-3">
-            {dict.check.reads.map((item) => (
-              <div key={item.title} className="flex h-full flex-col bg-bg p-5">
+        </Reveal>
+        <div className="mt-10 grid gap-8 md:grid-cols-3 lg:gap-12">
+          {dict.check.reads.map((item) => (
+            <Reveal key={item.title}>
+              <div className="border-t border-line pt-6">
                 <h3 className="font-sans text-detail-l font-medium text-ink">{item.title}</h3>
                 <p className="mt-2 text-paragraph-xs text-ink-secondary">{item.body}</p>
               </div>
-            ))}
-          </div>
-        </Reveal>
+            </Reveal>
+          ))}
+        </div>
       </section>
 
       <section className="mt-10 border-t border-line bg-bg-secondary py-16 lg:py-20">

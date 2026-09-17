@@ -53,7 +53,7 @@ export const zh: Dictionary = {
     check: 'Cookie 测活',
     converter: 'Cookie 转换器',
     getCredential: '获取凭证文件',
-    convertShort: '转换',
+    convertShort: '转换器',
     checkShort: '检测',
     credentialsShort: '凭证',
     docs: '文档',
@@ -70,10 +70,10 @@ export const zh: Dictionary = {
 
   hero: {
     eyebrow: 'Cookie 转换器',
-    title: 'Cookie 格式转换：cookies.txt 与 JSON 互转',
-    subtitle:
-      'Netscape cookies.txt 与 JSON 互转 — Cookie-Editor、Puppeteer、键值对，或者一行 Cookie 请求头。粘贴进来，格式会自动识别，把 Cookie 变成你需要的格式。',
-    privacy: '转换全部在你的浏览器中完成。',
+    title: '转换 Cookie。',
+    subtitle: '不会把它们发到任何地方。',
+    formats: 'Netscape cookies.txt ↔ JSON ↔ Cookie-Editor ↔ Puppeteer ↔ Cookie header',
+    privacy: '完全在你的浏览器中运行',
   },
 
   home: {
@@ -88,7 +88,7 @@ export const zh: Dictionary = {
     awaiting: '等待输入',
     unknown: '无法识别',
     convertTo: '转换为',
-    convert: '转换',
+    convert: '转换 Cookie',
     swap: '交换方向',
     batchSets: '组 Cookie',
     combine: '合并为一个文件',
@@ -221,8 +221,7 @@ export const zh: Dictionary = {
     checker: '会话检测',
     credentials: '凭证',
     guides: '指南',
-    reference: '参考',
-    about: '关于',
+    docs: '文档',
     disclaimer:
       '本站与 Anthropic 无任何关联，也未获得其认可。Claude 是 Anthropic PBC 的商标。',
     geoAttribution: 'IP 地理定位数据来自 DB-IP',
@@ -236,13 +235,13 @@ export const zh: Dictionary = {
   },
 
   check: {
-    eyebrow: 'Claude 会话',
-    title: '检测 Claude Cookie 是否有效：sessionKey 还能用吗',
+    eyebrow: '检测会话',
+    title: '这个 Claude 会话还有效吗？',
     subtitle:
       '粘贴 Netscape 或 JSON 导出。检查会读取账号、套餐，以及 5 小时和每周用量窗口——和 Claude 设置里看到的数字一样。',
     inputLabel: 'Cookie 文件',
     placeholder: 'Netscape cookies.txt 或 JSON 数组。需要 sessionKey / sessionKeyV3。可一次粘贴多条批量检测。',
-    submit: '检测有效性',
+    submit: '检测会话',
     checking: '正在检查…',
     clear: '清空',
     batchHeading: '已检测',
@@ -250,6 +249,8 @@ export const zh: Dictionary = {
     invalid: '会话无效',
     trustEncrypt: '在浏览器中加密',
     trustSend: '仅用于检测',
+    trustLine: '发送前在浏览器中加密',
+    formatsHint: 'Netscape · JSON · sessionKey',
     reasons: {
       empty: '请先粘贴 Cookie 文件。',
       missing_session: '文件里没有 Claude 的 sessionKey。',
@@ -342,20 +343,24 @@ export const zh: Dictionary = {
     inputLabel: 'Cookie 文件',
     placeholder:
       'Netscape cookies.txt 或 JSON 数组。需要 sessionKey / sessionKeyV3。可一次粘贴多条批量检测。',
-    submit: '检测 Cookie',
+    submit: '验证会话',
     checking: '检测中…',
-    converting: '转换中…',
+    converting: '正在生成…',
     clear: '清除',
-    convert: '转换为 credential',
+    convert: '生成凭证',
     cancel: '取消',
     stepPaste: '粘贴',
     stepVerify: '验证',
     stepGenerate: '生成',
+    pasteTitle: '粘贴你的 Claude Cookie',
+    verified: '会话已验证',
+    ready: '凭证已就绪',
+    placeAt: '放到',
     captchaHint: '完成下方验证后开始转换。',
     resultTitle: '凭证文件',
     copy: '复制',
     copied: '已复制',
-    save: '保存文件',
+    save: '下载文件',
     secretNote:
       '这是有效登录凭证。保存为 ~/.claude/.credentials.json，并像对待密码一样保管。用完后请关闭标签页。',
     batchHeading: '已检测',
@@ -371,18 +376,22 @@ export const zh: Dictionary = {
     },
   },
 
-  checkPromo: {
-    eyebrow: '会话检测',
-    title: '要检查 Claude 会话是否还有效？',
-    body: '粘贴 Claude 会话导出，几秒内就能看到它是否还在有效——账号、套餐，以及 5 小时和每周限额还剩多少。',
-    cta: '检测会话',
+  moreTools: {
+    title: '更多工具',
+    checkTitle: '检测 Claude 会话',
+    checkBody: '验证会话并查看套餐与用量限额。',
+    checkCta: '打开检测',
+    credTitle: '创建 Claude 凭证',
+    credBody: '把有效会话变成 .credentials.json',
+    credCta: '创建凭证',
   },
 
   common: {
     skipToContent: '跳到主要内容',
-    backToConverter: '返回转换器',
     home: '首页',
-    allTools: '全部工具',
+    tools: '工具',
+    cookieFormats: 'Cookie 格式',
+    minRead: '分钟阅读',
     guideBadge: '指南',
     onThisPage: '本页目录',
     example: '示例',
@@ -404,6 +413,9 @@ export const zh: Dictionary = {
       title: 'Netscape cookies.txt 格式',
       intro:
         '所有命令行工具至今仍在使用的格式。每条 Cookie 占一行，共七个字段，用制表符分隔 — 不是空格。以 # 开头的行是注释，只有一个刻意设计的例外。',
+      chips: ['7 个字段', '制表符分隔', '每行一条 Cookie'],
+      tabWarningTitle: '制表符，不要空格',
+      tabWarningBody: '严格的解析器可能会拒绝制表符被换成空格的文件。',
       fieldsTitle: '七个字段',
       fields: [
         {
@@ -467,24 +479,28 @@ export const zh: Dictionary = {
       entries: [
         {
           id: 'cookie-editor',
+          tab: 'Cookie-Editor',
           title: 'Cookie-Editor 与 EditThisCookie',
           body: '浏览器扩展导出的格式，是四者中最完整的：保存了浏览器 Cookie 的全部属性，包括 hostOnly 和 session 标志。sameSite 使用 no_restriction、lax、strict 和 unspecified 这几个词。',
           usedBy: 'Cookie-Editor、EditThisCookie、Cookie Quick Manager',
         },
         {
           id: 'puppeteer',
+          tab: 'Puppeteer',
           title: 'Puppeteer 与 Playwright',
           body: 'page.setCookie() 和 context.addCookies() 接受的格式。有效期字段名为 expires，会话 Cookie 用 -1 表示。sameSite 采用 HTTP 写法：None、Lax 和 Strict。省略 sameSite 会让浏览器应用自己的默认值，因此当它是 unspecified 时我们不写这个字段。',
           usedBy: 'Puppeteer、Playwright、各类 Selenium 封装',
         },
         {
           id: 'key-value',
+          tab: '键值对',
           title: '键值对',
           body: '一个由名称到值的扁平对象，也就是传给 requests 会话或 axios 配置的东西。除此之外它什么都不保存 — 没有域名，没有有效期，没有标志位。',
           usedBy: 'Python requests、axios、各类 fetch 封装',
         },
         {
           id: 'header',
+          tab: '请求头',
           title: 'Cookie 请求头字符串',
           body: '严格来说不是 JSON，但属于同一个话题：Cookie 请求头的字面值。各键值对之间用分号加空格连接。这正是你粘贴到 curl -H 之后或 Postman 里的内容。',
           usedBy: 'curl、Postman、HTTPie、浏览器开发者工具',
@@ -500,6 +516,11 @@ export const zh: Dictionary = {
       updated: '最后更新',
       intro:
         'Cookie 就是凭证。一条会话 Cookie 往往就足以让别人以你的身份登录。转换器的输入不会离开你的设备。会话检测和凭证工具会在浏览器中加密粘贴内容，再发到本站和 Anthropic。',
+      summary: [
+        { label: '转换器', note: '不会离开你的浏览器', leaves: false },
+        { label: '会话检测', note: '加密后发送以完成检测', leaves: true },
+        { label: '凭证', note: '在服务端验证，不存储令牌', leaves: true },
+      ],
       flows: {
         converterTitle: '转换器',
         converterSteps: ['你的浏览器', '解析 / 转换', '输出'],
@@ -548,10 +569,10 @@ export const zh: Dictionary = {
     },
 
     credential: {
-      title: '获取凭证文件',
+      title: '创建凭证文件',
       badge: 'Claude Code',
       intro:
-        '把 Claude 会话 Cookie 变成 ~/.claude/.credentials.json —— Claude Code 用来登录的文件。粘贴任意导出、确认账号，然后转换。',
+        '先验证账号，再根据 Claude 会话生成 ~/.claude/.credentials.json。',
       leadTitle: '如何使用',
       steps: [
         {
@@ -575,6 +596,7 @@ export const zh: Dictionary = {
       intro:
         'Claude Code 在任务中途停下并提示「Your session has expired. Please run /login」，或者每隔几小时就悄悄退回登录界面。下面解释这条消息到底意味着什么，以及从简单到彻底的修复顺序。',
       updated: '2026-09-14',
+      readMinutes: 6,
       sections: [
         {
           title: '「会话已过期」到底是什么意思',
@@ -646,6 +668,7 @@ export const zh: Dictionary = {
       intro:
         'Claude Pro 和 Max 用两个不同的窗口限制用量，而毫无缘由地看到「Claude usage limit reached」是最常见的困扰之一。下面讲清两个限制到底怎么运作、为什么共享额度比你以为的掉得快，以及各自何时重置。',
       updated: '2026-09-14',
+      readMinutes: 8,
       sections: [
         {
           title: '两个限制：滚动的 5 小时窗口和固定的每周窗口',

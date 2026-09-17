@@ -11,15 +11,6 @@ import { localePath, type Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { cn } from '@/lib/utils/cn'
 
-function samePath(pathname: string, href: string) {
-  const norm = (value: string) => {
-    let path = value === '/' ? '/' : `${value.replace(/\/+$/, '')}/`
-    if (path.startsWith('/en/')) path = path.slice(3) || '/'
-    return path
-  }
-  return norm(pathname) === norm(href)
-}
-
 interface HeaderProps {
   locale: Locale
   dict: Dictionary
@@ -49,6 +40,7 @@ export function Header({ locale, dict }: HeaderProps) {
   const docs = [
     { href: localePath(locale, '/formats/netscape-cookies-txt'), label: dict.nav.netscapeFormat },
     { href: localePath(locale, '/formats/json-cookies'), label: dict.nav.jsonFormat },
+    { href: localePath(locale, '/privacy'), label: dict.nav.privacy },
   ]
   const guides = [
     { href: localePath(locale, '/claude-code-login'), label: dict.nav.claudeCodeLogin },
@@ -63,33 +55,23 @@ export function Header({ locale, dict }: HeaderProps) {
         scrolled ? 'border-line' : 'border-transparent',
       )}
     >
-      <div className="ant-container flex h-16 items-center justify-between gap-3">
-        <a
-          href={localePath(locale, '/')}
-          className="flex items-center gap-2.5 text-ink transition-opacity duration-200 ease-ant hover:opacity-70"
-        >
-          <Logo className="text-clay" />
-          <Wordmark />
-        </a>
+      <div className="ant-container flex h-14 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-8">
+          <a
+            href={localePath(locale, '/')}
+            className="flex items-center gap-2.5 text-ink transition-opacity duration-200 ease-ant hover:opacity-70"
+          >
+            <Logo className="text-clay" />
+            <Wordmark />
+          </a>
 
-        <div className="hidden items-center gap-2 xl:flex">
-          <ToolSwitch locale={locale} dict={dict} pathname={pathname} />
-          <nav aria-label="Main" className="flex items-center gap-0.5">
-            <NavMenu label={dict.nav.docs} items={docs} />
-            <NavMenu label={dict.nav.guides} items={guides} />
-            <a
-              href={localePath(locale, '/privacy')}
-              className={cn(
-                'rounded-main px-3 py-2 font-sans text-detail-s font-medium',
-                'transition-colors duration-200 ease-ant hover:bg-surface-hover',
-                samePath(pathname, localePath(locale, '/privacy'))
-                  ? 'text-ink'
-                  : 'text-ink-secondary hover:text-ink',
-              )}
-            >
-              {dict.nav.privacy}
-            </a>
-          </nav>
+          <div className="hidden items-center gap-8 xl:flex">
+            <ToolSwitch locale={locale} dict={dict} pathname={pathname} />
+            <nav aria-label="Main" className="flex items-center gap-1">
+              <NavMenu label={dict.nav.docs} items={docs} />
+              <NavMenu label={dict.nav.guides} items={guides} />
+            </nav>
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
@@ -111,7 +93,7 @@ export function Header({ locale, dict }: HeaderProps) {
             className={cn(
               'grid size-9 cursor-pointer place-items-center rounded-main xl:hidden',
               'text-ink-secondary transition-colors duration-200 ease-ant',
-              'hover:bg-surface-hover hover:text-ink',
+              'hover:text-ink',
             )}
           >
             <span className="relative block h-4 w-[18px]" aria-hidden>
@@ -134,7 +116,7 @@ export function Header({ locale, dict }: HeaderProps) {
 
       <div
         className={cn(
-          'fixed inset-x-0 bottom-0 top-16 z-30 xl:hidden',
+          'fixed inset-x-0 bottom-0 top-14 z-30 xl:hidden',
           'border-t border-line bg-bg',
           'transition-[opacity,visibility] duration-300 ease-ant',
           menuOpen ? 'visible opacity-100' : 'invisible opacity-0',
@@ -149,12 +131,6 @@ export function Header({ locale, dict }: HeaderProps) {
           </div>
           <MobileGroup title={dict.nav.docs} items={docs} />
           <MobileGroup title={dict.nav.guides} items={guides} />
-          <a
-            href={localePath(locale, '/privacy')}
-            className="rounded-main px-3 py-3.5 font-sans text-detail-xl font-medium text-ink transition-colors duration-200 ease-ant hover:bg-surface-hover"
-          >
-            {dict.nav.privacy}
-          </a>
 
           <div className="border-t border-line pt-5 sm:hidden">
             <p className="px-3 pb-2 font-sans text-detail-xs tracking-wide text-ink-faint uppercase">
@@ -179,7 +155,7 @@ function MobileGroup({ title, items }: { title: string; items: { href: string; l
           <a
             key={item.href}
             href={item.href}
-            className="rounded-main px-3 py-3 font-sans text-detail-l font-medium text-ink transition-colors duration-200 ease-ant hover:bg-surface-hover"
+            className="rounded-main px-3 py-3 font-sans text-detail-l font-medium text-ink-secondary transition-colors duration-200 ease-ant hover:text-ink"
           >
             {item.label}
           </a>

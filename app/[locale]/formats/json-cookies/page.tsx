@@ -75,7 +75,8 @@ export default async function JsonFormatsPage({ params }: PageProps) {
     <>
       <JsonLd
         data={buildBreadcrumbJsonLd(locale, [
-          { name: dict.common.home, path: '/' },
+          { name: dict.footer.docs, path: '/formats/netscape-cookies-txt' },
+          { name: dict.common.cookieFormats, path: PATH },
           { name: page.title, path: PATH },
         ])}
       />
@@ -85,15 +86,14 @@ export default async function JsonFormatsPage({ params }: PageProps) {
         title={page.title}
         intro={page.intro}
         trail={[
-          { href: '/', label: dict.common.home },
-          { label: dict.footer.reference },
+          { label: dict.footer.docs },
+          { label: dict.common.cookieFormats },
           { label: page.title },
         ]}
       />
 
       <div className="ant-container py-16 lg:py-20">
         <div className="max-w-[var(--container-prose)]">
-          {/* Capability matrix */}
           <Reveal>
             <h2 className="text-display-s sm:text-display-m">{page.mappingTitle}</h2>
           </Reveal>
@@ -146,30 +146,45 @@ export default async function JsonFormatsPage({ params }: PageProps) {
               </table>
             </div>
           </Reveal>
+        </div>
 
-          {/* The four shapes */}
-          <Reveal>
-            <h2 className="mt-16 text-display-s sm:text-display-m">{page.formatsTitle}</h2>
-          </Reveal>
+        <Reveal>
+          <h2 className="mt-16 text-display-s sm:text-display-m">{page.formatsTitle}</h2>
+        </Reveal>
 
-          <Reveal>
-            <div className="mt-10">
-              <JsonFormatTabs
-                usedByLabel={dict.common.usedBy}
-                exampleLabel={dict.common.example}
-                tabs={page.entries.map((entry) => ({
+        <Reveal>
+          <div className="mt-10">
+            <JsonFormatTabs
+              usedByLabel={dict.common.usedBy}
+              exampleLabel={dict.common.example}
+              yesLabel={dict.common.yes}
+              noLabel={dict.common.no}
+              tabs={page.entries.map((entry) => {
+                const caps = CAPABILITIES[entry.id] ?? {
+                  domain: false,
+                  expiry: false,
+                  flags: false,
+                }
+                return {
                   id: entry.id,
+                  label: entry.tab,
                   title: entry.title,
                   body: entry.body,
                   usedBy: entry.usedBy,
                   code: (samples[entry.id] ?? '').trimEnd(),
                   syntax: entry.id === 'header' ? 'text' : 'json',
-                }))}
-              />
-            </div>
-          </Reveal>
+                  capabilities: [
+                    { label: dict.common.storesDomain, on: caps.domain },
+                    { label: dict.common.storesExpiry, on: caps.expiry },
+                    { label: dict.common.storesFlags, on: caps.flags },
+                  ],
+                }
+              })}
+            />
+          </div>
+        </Reveal>
 
-          {/* Lossiness */}
+        <div className="max-w-[var(--container-prose)]">
           <Reveal>
             <h2 className="mt-16 text-display-s sm:text-display-m">{page.lossTitle}</h2>
             <p className="mt-6 max-w-[62ch] text-paragraph-xs text-ink-secondary">

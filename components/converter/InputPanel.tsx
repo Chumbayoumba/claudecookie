@@ -2,11 +2,13 @@
 
 import { useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { FormatBadge } from './FormatBadge'
-import { PANEL_BODY_HEIGHT } from './layout'
 import { Button } from '@/components/ui/Button'
 import { MAX_INPUT_BYTES, type CookieFormat } from '@/lib/cookies'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { cn } from '@/lib/utils/cn'
+
+/** Shorter than the old full-card panels so Convert stays inside the shell on screen. */
+const EDITOR_HEIGHT = 'h-[min(38vh,18rem)] lg:h-[min(46vh,24rem)]'
 
 interface InputPanelProps {
   value: string
@@ -75,12 +77,12 @@ export function InputPanel({
       }}
       onDrop={onDrop}
       className={cn(
-        'relative flex min-w-0 flex-1 flex-col rounded-large border bg-surface',
-        'transition-[border-color,background-color] duration-200 ease-ant',
-        dragging ? 'border-clay bg-clay/5' : 'border-line',
+        'relative flex min-w-0 flex-1 flex-col',
+        'transition-colors duration-200 ease-ant',
+        dragging && 'bg-clay/5',
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-4">
         <span className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
           {dict.converter.inputLabel}
         </span>
@@ -89,6 +91,31 @@ export function InputPanel({
           confidence={confidence}
           hasInput={value.trim().length > 0}
           dict={dict}
+        />
+        <div className="flex basis-full flex-wrap items-center gap-0.5 sm:ms-auto sm:basis-auto sm:justify-end">
+          <Button size="sm" variant="ghost" onClick={onSample}>
+            {dict.converter.sample}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()}>
+            {dict.converter.upload}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onChange('')}
+            disabled={!value}
+            className="text-ink-faint"
+          >
+            {dict.converter.clear}
+          </Button>
+        </div>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".txt,.json,text/plain,application/json"
+          onChange={onFilePicked}
+          className="hidden"
+          tabIndex={-1}
         />
       </div>
 
@@ -106,45 +133,19 @@ export function InputPanel({
         autoCapitalize="off"
         data-gramm="false"
         className={cn(
-          'ant-scroll resize-none bg-transparent px-4 py-4',
-          PANEL_BODY_HEIGHT,
+          'ant-scroll resize-none bg-bg px-4 py-4',
+          EDITOR_HEIGHT,
           'font-mono text-detail-s leading-relaxed text-ink',
           'placeholder:text-ink-faint',
           'focus:outline-none',
         )}
       />
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
-        <Button size="sm" variant="ghost" onClick={onSample}>
-          {dict.converter.sample}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()}>
-          {dict.converter.upload}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => onChange('')}
-          disabled={!value}
-          className="ms-auto"
-        >
-          {dict.converter.clear}
-        </Button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".txt,.json,text/plain,application/json"
-          onChange={onFilePicked}
-          className="hidden"
-          tabIndex={-1}
-        />
-      </div>
-
       {/* Drop overlay. `pointer-events-none` keeps it from eating the drop. */}
       <div
         aria-hidden
         className={cn(
-          'pointer-events-none absolute inset-0 grid place-items-center rounded-large',
+          'pointer-events-none absolute inset-0 grid place-items-center',
           'bg-bg/85 backdrop-blur-[2px] transition-opacity duration-200 ease-ant',
           dragging ? 'opacity-100' : 'opacity-0',
         )}

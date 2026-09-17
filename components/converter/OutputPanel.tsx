@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PANEL_BODY_HEIGHT } from './layout'
 import { TargetTabs } from './TargetTabs'
 import { Button } from '@/components/ui/Button'
 import { FORMAT_META, type CookieFormat } from '@/lib/cookies'
@@ -11,6 +10,9 @@ import { cn } from '@/lib/utils/cn'
 import { metrikaGoal } from '@/lib/analytics'
 import { downloadText } from '@/lib/utils/download'
 import { highlight } from '@/lib/utils/highlight'
+
+/** Keep in lockstep with InputPanel — mismatched heights misalign the two columns. */
+const EDITOR_HEIGHT = 'h-[min(38vh,18rem)] lg:h-[min(46vh,24rem)]'
 
 interface OutputPanelProps {
   output: string
@@ -98,7 +100,7 @@ export function OutputPanel({
     return () => clearTimeout(timer)
   }, [copied])
 
-  // Pulse the border when Convert is pressed explicitly. Skipping the first run
+  // Pulse the column when Convert is pressed explicitly. Skipping the first run
   // keeps the panel from flashing on page load.
   useEffect(() => {
     if (firstRender.current) {
@@ -120,21 +122,56 @@ export function OutputPanel({
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-1 flex-col rounded-large border bg-surface',
-        // The pulse fades out slowly, so a fast transition in and a slow one
-        // out reads as a flash rather than a colour change.
-        flash ? 'border-clay duration-0' : 'border-line duration-700',
+        'flex min-w-0 flex-1 flex-col',
+        flash ? 'bg-clay/5 duration-0' : 'duration-700',
         'transition-colors ease-ant',
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-4">
         <span className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
           {dict.converter.outputLabel}
         </span>
         <TargetTabs value={target} onChange={onTargetChange} dict={dict} />
+        <div className="flex basis-full flex-wrap items-center gap-0.5 sm:ms-auto sm:basis-auto sm:justify-end">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => copy(output, 'multi')}
+            disabled={!output}
+          >
+            <CopyGlyph>{copied === 'multi' ? ICON.check : ICON.copy}</CopyGlyph>
+            {copied === 'multi' ? dict.converter.copied : dict.converter.copy}
+          </Button>
+
+          {/* Shown only for JSON, where a one-line copy is both meaningful and safe. */}
+          {oneLine !== null && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => copy(oneLine, 'line')}
+              disabled={!output}
+            >
+              <CopyGlyph>{copied === 'line' ? ICON.check : ICON.line}</CopyGlyph>
+              {copied === 'line' ? dict.converter.copied : dict.converter.copyLine}
+            </Button>
+          )}
+
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!output}
+            title={meta.filename}
+            onClick={() => {
+              downloadText(output, meta.filename, meta.mime)
+              metrikaGoal('output_downloaded')
+            }}
+          >
+            {dict.converter.download}
+          </Button>
+        </div>
       </div>
 
-      <div className={cn('ant-scroll relative overflow-auto', PANEL_BODY_HEIGHT)}>
+      <div className={cn('ant-scroll relative overflow-auto bg-bg', EDITOR_HEIGHT)}>
         {output ? (
           <pre
             className={cn(
@@ -155,45 +192,6 @@ export function OutputPanel({
             {dict.converter.outputPlaceholder}
           </p>
         )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => copy(output, 'multi')}
-          disabled={!output}
-        >
-          <CopyGlyph>{copied === 'multi' ? ICON.check : ICON.copy}</CopyGlyph>
-          {copied === 'multi' ? dict.converter.copied : dict.converter.copy}
-        </Button>
-
-        {/* Shown only for JSON, where a one-line copy is both meaningful and safe. */}
-        {oneLine !== null && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => copy(oneLine, 'line')}
-            disabled={!output}
-          >
-            <CopyGlyph>{copied === 'line' ? ICON.check : ICON.line}</CopyGlyph>
-            {copied === 'line' ? dict.converter.copied : dict.converter.copyLine}
-          </Button>
-        )}
-
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={!output}
-          onClick={() => {
-            downloadText(output, meta.filename, meta.mime)
-            metrikaGoal('output_downloaded')
-          }}
-        >
-          {dict.converter.download}
-        </Button>
-
-        <span className="ms-auto font-mono text-detail-xs text-ink-faint">{meta.filename}</span>
       </div>
     </div>
   )

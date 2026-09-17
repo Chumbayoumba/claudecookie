@@ -33,23 +33,26 @@
   --swatch-white: #ffffff;
 
   /* --- Semantic tokens, light theme -------------------------------------- */
-  --ant-bg: var(--swatch-ivory-light);
-  --ant-bg-secondary: var(--swatch-ivory-medium);
-  --ant-bg-tertiary: var(--swatch-ivory-dark);
-  --ant-surface: var(--swatch-white);
-  --ant-surface-hover: var(--swatch-ivory-medium);
-  --ant-text: var(--swatch-slate-dark);
-  --ant-text-secondary: var(--swatch-slate-light);
+  --ant-bg: #fafaf9;
+  --ant-bg-secondary: #f5f5f3;
+  --ant-bg-tertiary: #ecece9;
+  --ant-surface: #ffffff;
+  --ant-surface-2: #f5f5f3;
+  --ant-surface-hover: #f5f5f3;
+  --ant-text: #191918;
+  --ant-text-secondary: #74736f;
   --ant-text-faint: var(--swatch-cloud-dark);
-  --ant-border: #1414131a;
-  --ant-border-strong: #14141333;
-  --ant-accent: var(--swatch-clay);
-  --ant-accent-hover: var(--swatch-accent);
-  --ant-accent-contrast: var(--swatch-ivory-light);
-  --ant-ok: var(--swatch-olive);
+  --ant-border: #1919181a;
+  --ant-border-strong: #19191833;
+  --ant-border-tool: #dad8d3;
+  --ant-accent: #c86648;
+  --ant-accent-hover: #b5573c;
+  --ant-accent-soft: #fcede7;
+  --ant-accent-contrast: #fafaf9;
+  --ant-ok: #17865c;
   --ant-info: var(--swatch-sky);
-  --ant-warn: var(--swatch-kraft);
-  --ant-error: var(--swatch-fig);
+  --ant-warn: #b7791f;
+  --ant-error: #c83f49;
   /* Inverted button: dark chip on a light page. */
   --ant-invert-bg: var(--swatch-slate-dark);
   --ant-invert-text: var(--swatch-ivory-light);
@@ -64,15 +67,21 @@
   --ant-bg-secondary: #1c1c1a;
   --ant-bg-tertiary: #262623;
   --ant-surface: #1c1c1a;
+  --ant-surface-2: #262623;
   --ant-surface-hover: #262623;
   --ant-text: var(--swatch-ivory-light);
   --ant-text-secondary: var(--swatch-cloud-medium);
   --ant-text-faint: var(--swatch-cloud-dark);
-  --ant-border: #faf9f51a;
-  --ant-border-strong: #faf9f533;
-  --ant-accent: var(--swatch-clay);
-  --ant-accent-hover: #e08a6d;
+  --ant-border: #faf9f526;
+  --ant-border-strong: #faf9f545;
+  --ant-border-tool: #3f3e3a;
+  --ant-accent: #c86648;
+  --ant-accent-hover: #d4785c;
+  --ant-accent-soft: #3a2823;
   --ant-accent-contrast: var(--swatch-slate-dark);
+  --ant-ok: #2f9a72;
+  --ant-warn: #c4923a;
+  --ant-error: #d15c63;
   --ant-invert-bg: var(--swatch-ivory-light);
   --ant-invert-text: var(--swatch-slate-dark);
   --ant-invert-bg-hover: var(--swatch-ivory-dark);
@@ -103,8 +112,11 @@
   --color-ink-faint: var(--ant-text-faint);
   --color-line: var(--ant-border);
   --color-line-strong: var(--ant-border-strong);
+  --color-line-tool: var(--ant-border-tool);
+  --color-surface-2: var(--ant-surface-2);
   --color-clay: var(--ant-accent);
   --color-clay-hover: var(--ant-accent-hover);
+  --color-clay-soft: var(--ant-accent-soft);
   --color-clay-contrast: var(--ant-accent-contrast);
   --color-ok: var(--ant-ok);
   --color-info: var(--ant-info);
@@ -235,6 +247,10 @@
     pointer-events: none;
     opacity: var(--ant-noise-opacity);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .ant-tool {
+    --ant-border: var(--ant-border-tool);
   }
 
   .ant-container {

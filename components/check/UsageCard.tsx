@@ -19,11 +19,11 @@ export function UsageCard({ title, window, dict }: UsageCardProps) {
     !known ? 'bg-ink-faint' : percent >= 90 ? 'bg-error' : percent >= 70 ? 'bg-warn' : 'bg-ok'
 
   return (
-    <article className="rounded-large border border-line bg-surface p-5">
+    <article>
       <h3 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
         {title}
       </h3>
-      <p className="mt-3 font-sans text-display-xs text-ink">
+      <p className="mt-2 font-sans text-detail-l text-ink">
         {known ? (
           <>
             {percent}% {dict.check.used}
@@ -38,7 +38,7 @@ export function UsageCard({ title, window, dict }: UsageCardProps) {
           <span className="text-ink-secondary">{dict.check.unknownWindow}</span>
         )}
       </p>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-bg-tertiary">
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-bg-tertiary">
         <motion.div
           className={cn('h-full rounded-full', tone)}
           initial={{ width: 0 }}

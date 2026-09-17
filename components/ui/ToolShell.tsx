@@ -6,14 +6,10 @@ interface ToolShellProps {
   className?: string
 }
 
-/** Soft glow behind the main tool card. No neon, no grid. */
+/** Plain tool wrapper. No glow. */
 export function ToolShell({ children, className }: ToolShellProps) {
   return (
-    <div className={cn('relative', className)}>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-20 left-1/2 -z-10 h-44 w-[min(36rem,90vw)] -translate-x-1/2 rounded-full bg-clay/10 blur-3xl"
-      />
+    <div className={cn('ant-tool', className)}>
       {children}
     </div>
   )

@@ -16,9 +16,9 @@ export function PageEnter({ children, delay = 0, className }: PageEnterProps) {
   return (
     <motion.div
       className={className}
-      initial={{ y: 10 }}
+      initial={{ y: 4 }}
       animate={{ y: 0 }}
-      transition={{ duration: 0.36, delay, ease: EASE }}
+      transition={{ duration: 0.22, delay, ease: EASE }}
     >
       {children}
     </motion.div>

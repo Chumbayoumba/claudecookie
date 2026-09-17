@@ -19,6 +19,7 @@ import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { cn } from '@/lib/utils/cn'
 
 const EASE = [0.165, 0.84, 0.44, 1] as const
+const RISE = { duration: 0.24, ease: EASE } as const
 
 interface CredentialToolProps {
   locale: Locale
@@ -117,6 +118,11 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
     setFailed(false)
   }
 
+  function onClear() {
+    setValue('')
+    onCancel()
+  }
+
   async function onCaptcha(token: string) {
     if (pending === null || converting) return
     const raw = sets[pending] ?? value
@@ -189,7 +195,8 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
     URL.revokeObjectURL(url)
   }
 
-  const step: 1 | 2 | 3 = file || pending !== null || converting ? 3 : results ? 2 : 1
+  const hasValid = Boolean(results?.some((result) => result.ok))
+  const step: 1 | 2 | 3 = file ? 3 : hasValid ? 2 : 1
 
   return (
     <div className="flex flex-col gap-6">
@@ -200,92 +207,108 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
         generate={dict.credential.stepGenerate}
       />
 
-      <form onSubmit={onCheck} className="flex flex-col gap-4">
-        <TrustRow encrypt={dict.check.trustEncrypt} send={dict.check.trustSend} />
-        <div
-          className={cn(
-            'overflow-hidden rounded-large border border-line bg-surface',
-            'transition-colors duration-200 ease-ant hover:border-line-strong',
-            (busy || converting) && 'border-clay/35',
-          )}
-        >
-          <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-            <label
-              htmlFor="claude-credential-cookie"
-              className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase"
-            >
-              {dict.credential.inputLabel}
-            </label>
-            <Pill tone="accent">{dict.pages.credential.badge}</Pill>
-          </div>
-          <CheckingBar active={busy || converting} />
-          <textarea
-            id="claude-credential-cookie"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={dict.credential.placeholder}
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            data-gramm="false"
-            rows={10}
-            className={cn(
-              'ant-scroll block h-[min(38vh,18rem)] w-full resize-y bg-transparent px-4 py-4',
-              'font-mono text-detail-s leading-relaxed text-ink',
-              'placeholder:text-ink-faint focus:outline-none',
-            )}
-          />
-        </div>
+      <AnimatePresence initial={false} mode="wait">
+        {step === 1 ? (
+          <motion.div key="paste" initial={{ y: 8 }} animate={{ y: 0 }} exit={{ y: 6 }} transition={RISE}>
+            <form onSubmit={onCheck} className="flex flex-col gap-4">
+              <div
+                className={cn(
+                  'overflow-hidden rounded-large border border-line bg-surface',
+                  'transition-colors duration-200 ease-ant hover:border-line-strong',
+                  busy && 'border-clay/35',
+                )}
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+                  <label
+                    htmlFor="claude-credential-cookie"
+                    className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase"
+                  >
+                    {dict.credential.inputLabel}
+                  </label>
+                  <Pill tone="accent">{dict.pages.credential.badge}</Pill>
+                </div>
+                <CheckingBar active={busy} />
+                <textarea
+                  id="claude-credential-cookie"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder={dict.credential.placeholder}
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  data-gramm="false"
+                  rows={10}
+                  className={cn(
+                    'ant-scroll block h-[min(38vh,18rem)] w-full resize-y bg-transparent px-4 py-4',
+                    'font-mono text-detail-s leading-relaxed text-ink',
+                    'placeholder:text-ink-faint focus:outline-none',
+                  )}
+                />
+              </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="accent" size="lg" disabled={busy || converting}>
-            {busy ? dict.credential.checking : dict.credential.submit}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={!value && !results && !file}
-            onClick={() => {
-              setValue('')
-              onCancel()
-            }}
-          >
-            {dict.credential.clear}
-          </Button>
-        </div>
-      </form>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="submit" variant="accent" size="lg" disabled={busy}>
+                  {busy ? dict.credential.checking : dict.credential.submit}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={!value && !results && !file}
+                  onClick={onClear}
+                >
+                  {dict.credential.clear}
+                </Button>
+              </div>
 
-      <AnimatePresence initial={false}>
-        {failed ? (
+              <TrustRow line={dict.check.trustLine} />
+            </form>
+
+            {failed ? (
+              <div className="mt-4 rounded-large border border-error/30 bg-error/8 p-5">
+                <h3 className="font-sans text-detail-l font-medium text-ink">{dict.credential.error}</h3>
+              </div>
+            ) : null}
+
+            {results && !hasValid ? (
+              <div className="mt-4 flex flex-col gap-4">
+                {results.length > 1 ? (
+                  <div className="font-sans text-detail-s text-ink-secondary">
+                    {dict.credential.batchHeading}: <b className="text-ink">{results.length}</b>
+                  </div>
+                ) : null}
+                {results.map((result, index) => (
+                  <CheckReport key={index} result={result} dict={dict} />
+                ))}
+              </div>
+            ) : null}
+          </motion.div>
+        ) : null}
+
+        {step === 2 && results ? (
           <motion.div
-            key="failed"
+            key="verified"
             initial={{ y: 8 }}
             animate={{ y: 0 }}
             exit={{ y: 6 }}
-            transition={{ duration: 0.28, ease: EASE }}
-            className="rounded-large border border-line bg-surface p-5"
-          >
-            <h3 className="font-sans text-detail-l font-medium text-ink">{dict.credential.error}</h3>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence initial={false} mode="wait">
-        {results ? (
-          <motion.div
-            key={`n${results.length}-${results[0]?.ok ? 'v' : 'x'}`}
-            initial={{ y: 10 }}
-            animate={{ y: 0 }}
-            exit={{ y: 8 }}
-            transition={{ duration: 0.32, ease: EASE }}
+            transition={RISE}
             className="flex flex-col gap-4"
           >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-sans text-detail-l font-medium text-ink">{dict.credential.verified}</h2>
+              <Button type="button" variant="ghost" onClick={onClear}>
+                {dict.credential.clear}
+              </Button>
+            </div>
+
+            <CheckingBar active={converting} />
+
             {results.length > 1 ? (
               <div className="font-sans text-detail-s text-ink-secondary">
                 {dict.credential.batchHeading}: <b className="text-ink">{results.length}</b>
               </div>
             ) : null}
+
             {results.map((result, index) => (
               <CheckReport
                 key={index}
@@ -324,63 +347,64 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
                         >
                           {dict.credential.convert}
                         </Button>
-                        <Button type="button" variant="ghost" onClick={onCancel}>
-                          {dict.credential.cancel}
-                        </Button>
                       </div>
                     )
                   ) : undefined
                 }
               />
             ))}
+
+            {convertError ? (
+              <div className="rounded-large border border-error/30 bg-error/8 p-5">
+                <h3 className="font-sans text-detail-l font-medium text-ink">{convertError}</h3>
+              </div>
+            ) : null}
           </motion.div>
         ) : null}
-      </AnimatePresence>
 
-      <AnimatePresence initial={false}>
-        {convertError ? (
-          <motion.div
-            key="convert-error"
+        {step === 3 && file ? (
+          <motion.section
+            key="ready"
             initial={{ y: 8 }}
             animate={{ y: 0 }}
             exit={{ y: 6 }}
-            transition={{ duration: 0.28, ease: EASE }}
-            className="rounded-large border border-line bg-surface p-5"
+            transition={RISE}
+            className="flex flex-col gap-4"
           >
-            <h3 className="font-sans text-detail-l font-medium text-ink">{convertError}</h3>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence initial={false}>
-        {file ? (
-          <motion.section
-            key="file"
-            initial={{ y: 10 }}
-            animate={{ y: 0 }}
-            exit={{ y: 8 }}
-            transition={{ duration: 0.32, ease: EASE }}
-            className="overflow-hidden rounded-large border border-line bg-surface"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-              <h3 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
-                {dict.credential.resultTitle}
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={() => void onCopy()}>
-                  {copied ? dict.credential.copied : dict.credential.copy}
-                </Button>
-                <Button type="button" variant="accent" size="sm" onClick={onSave}>
-                  {dict.credential.save}
-                </Button>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-sans text-detail-l font-medium text-ink">{dict.credential.ready}</h2>
+              <Button type="button" variant="ghost" onClick={onClear}>
+                {dict.credential.clear}
+              </Button>
             </div>
-            <pre className="ant-scroll max-h-[22rem] overflow-auto px-4 py-4 font-mono text-detail-s leading-relaxed text-ink">
-              {file.text}
-            </pre>
-            <p className="border-t border-line px-4 py-3 text-paragraph-xs text-ink-secondary">
-              {dict.credential.secretNote}
+
+            <p className="font-sans text-detail-s text-ink-secondary">
+              {dict.credential.placeAt}{' '}
+              <span className="font-mono text-ink">~/.claude/.credentials.json</span>
             </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="accent" size="lg" onClick={onSave}>
+                {dict.credential.save}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => void onCopy()}>
+                {copied ? dict.credential.copied : dict.credential.copy}
+              </Button>
+            </div>
+
+            <div className="overflow-hidden rounded-large border border-line bg-surface">
+              <div className="border-b border-line px-4 py-3">
+                <h3 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
+                  {dict.credential.resultTitle}
+                </h3>
+              </div>
+              <pre className="ant-scroll max-h-[22rem] overflow-auto px-4 py-4 font-mono text-detail-s leading-relaxed text-ink">
+                {file.text}
+              </pre>
+              <p className="border-t border-line px-4 py-3 text-paragraph-xs text-ink-secondary">
+                {dict.credential.secretNote}
+              </p>
+            </div>
           </motion.section>
         ) : null}
       </AnimatePresence>

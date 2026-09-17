@@ -1,12 +1,11 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { GoalLink } from '@/components/analytics/GoalLink'
 import { Converter } from '@/components/converter/Converter'
 import { Hero } from '@/components/converter/Hero'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { Accordion } from '@/components/ui/Accordion'
+import { MoreTools } from '@/components/ui/MoreTools'
 import { Reveal } from '@/components/ui/Reveal'
-import { ToolShell } from '@/components/ui/ToolShell'
 import { ALL_FORMATS } from '@/lib/cookies'
 import { getDictionary } from '@/lib/i18n'
 import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
@@ -52,46 +51,17 @@ export default async function HomePage({ params }: PageProps) {
     <>
       <JsonLd data={jsonLd} />
 
-      <section className="ant-container pt-12 pb-10 sm:pt-16 lg:pt-20">
+      <section className="ant-container pt-10 pb-6 sm:pt-12 lg:pt-14">
         <Hero dict={dict} />
       </section>
 
-      <section className="ant-container pb-16" aria-label={dict.hero.eyebrow}>
-        <ToolShell>
-          <Converter locale={locale} dict={dict} />
-        </ToolShell>
+      <section className="ant-container pb-12" aria-label={dict.hero.eyebrow}>
+        <Converter locale={locale} dict={dict} />
       </section>
 
-      {/* Checker promo */}
-      <section className="ant-container pb-4">
-        <Reveal>
-          <div className="flex flex-col gap-6 overflow-hidden rounded-large border border-line bg-bg-secondary p-8 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="font-sans text-detail-xs font-semibold tracking-[0.12em] text-clay uppercase">
-                {dict.checkPromo.eyebrow}
-              </p>
-              <h2 className="mt-4 text-display-xs sm:text-display-s">{dict.checkPromo.title}</h2>
-              <p className="mt-4 text-paragraph-xs text-ink-secondary">{dict.checkPromo.body}</p>
-            </div>
-            <GoalLink
-              href={localePath(locale, '/check')}
-              goal="checker_cta_click"
-              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-main border border-transparent bg-clay px-6 font-sans text-detail-l font-medium whitespace-nowrap text-clay-contrast transition-colors duration-200 ease-ant hover:bg-clay-hover"
-            >
-              {dict.checkPromo.cta}
-              <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
-                <path
-                  d="M6 3.5 10.5 8 6 12.5"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </GoalLink>
-          </div>
-        </Reveal>
-      </section>
+      <Reveal>
+        <MoreTools locale={locale} dict={dict} />
+      </Reveal>
 
       {/* How it works */}
       <section className="ant-container py-16 lg:py-24">
@@ -115,35 +85,31 @@ export default async function HomePage({ params }: PageProps) {
       </section>
 
       {/* Supported formats */}
-      <section className="border-y border-line bg-bg-secondary py-16 lg:py-24">
-        <div className="ant-container">
-          <Reveal>
-            <h2 className="text-display-s sm:text-display-m">{dict.home.formatsTitle}</h2>
-          </Reveal>
+      <section className="ant-container py-16 lg:py-24">
+        <Reveal>
+          <h2 className="text-display-s sm:text-display-m">{dict.home.formatsTitle}</h2>
+        </Reveal>
 
-          <div className="mt-10 grid gap-px overflow-hidden rounded-large border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
-            {ALL_FORMATS.map((format, i) => {
-              // Each card links to the reference page that documents it - the
-              // home page's only contextual links into the two /formats/ pages,
-              // which otherwise get inbound links from the footer alone.
-              const href =
-                format === 'netscape'
-                  ? localePath(locale, '/formats/netscape-cookies-txt')
-                  : localePath(locale, '/formats/json-cookies')
-              return (
-                <Reveal key={format} delay={i * 0.05} className="bg-bg">
-                  <a href={href} className="group block h-full p-6 no-underline transition-colors duration-200 ease-ant hover:bg-surface-hover">
-                    <h3 className="font-sans text-detail-l font-medium text-ink group-hover:text-clay">
-                      {dict.formats[format].label}
-                    </h3>
-                    <p className="mt-2 font-mono text-detail-xs text-ink-faint">
-                      {dict.formats[format].hint}
-                    </p>
-                  </a>
-                </Reveal>
-              )
-            })}
-          </div>
+        <div className="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+          {ALL_FORMATS.map((format) => {
+            // Each item links to the reference page that documents it - the
+            // home page's only contextual links into the two /formats/ pages,
+            // which otherwise get inbound links from the footer alone.
+            const href =
+              format === 'netscape'
+                ? localePath(locale, '/formats/netscape-cookies-txt')
+                : localePath(locale, '/formats/json-cookies')
+            return (
+              <a key={format} href={href} className="group block no-underline">
+                <h3 className="font-sans text-detail-l font-medium text-ink group-hover:text-clay">
+                  {dict.formats[format].label}
+                </h3>
+                <p className="mt-2 font-mono text-detail-xs text-ink-faint">
+                  {dict.formats[format].hint}
+                </p>
+              </a>
+            )
+          })}
         </div>
       </section>
 

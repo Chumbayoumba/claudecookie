@@ -12,9 +12,10 @@ interface PageHeaderProps {
   intro: string
   trail: Crumb[]
   badge?: string
+  meta?: string
 }
 
-export function PageHeader({ locale, title, intro, trail, badge }: PageHeaderProps) {
+export function PageHeader({ locale, title, intro, trail, badge, meta }: PageHeaderProps) {
   return (
     <header className="ant-container border-b border-line pt-12 pb-12 sm:pt-16">
       <PageEnter>
@@ -50,21 +51,26 @@ export function PageHeader({ locale, title, intro, trail, badge }: PageHeaderPro
       </PageEnter>
 
       {badge ? (
-        <PageEnter delay={0.04}>
+        <PageEnter delay={0.02}>
           <p className="mt-6 font-sans text-detail-xs font-semibold tracking-[0.12em] text-clay uppercase">
             {badge}
           </p>
         </PageEnter>
       ) : null}
 
-      <PageEnter delay={badge ? 0.08 : 0.05}>
+      <PageEnter delay={badge ? 0.04 : 0.02}>
         <h1 className="mt-6 max-w-3xl text-display-m sm:text-display-l">{title}</h1>
       </PageEnter>
-      <PageEnter delay={badge ? 0.12 : 0.1}>
+      <PageEnter delay={badge ? 0.06 : 0.04}>
         <p className="mt-6 max-w-2xl text-paragraph-xs text-ink-secondary sm:text-paragraph-s">
           {intro}
         </p>
       </PageEnter>
+      {meta ? (
+        <PageEnter delay={badge ? 0.08 : 0.06}>
+          <p className="mt-3 max-w-2xl font-sans text-detail-s text-ink-faint">{meta}</p>
+        </PageEnter>
+      ) : null}
     </header>
   )
 }
