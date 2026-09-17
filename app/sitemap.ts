@@ -18,8 +18,7 @@ const ROUTES = [
   { path: '/check', priority: 0.7, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
   { path: '/claude-code-login', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
   { path: '/claude-usage-limits', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
-  // /credential is intentionally omitted: it is a noindexed placeholder (see
-  // app/[locale]/credential/page.tsx). Re-add it when it has real content.
+  { path: '/credential', priority: 0.7, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
   { path: '/formats/netscape-cookies-txt', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-17' },
   { path: '/formats/json-cookies', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-14' },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' as const, lastModified: '2026-09-17' },

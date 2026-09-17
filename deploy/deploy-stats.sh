@@ -46,6 +46,8 @@ CONF=$(TG_BOT_TOKEN="$TG_BOT_TOKEN" TG_OWNER_ID="$TG_OWNER_ID" \
   CC_CHECK_DEFAULT_CC="${CC_CHECK_DEFAULT_CC:-}" \
   CC_CLIENT_VERSION="${CC_CLIENT_VERSION:-}" \
   CC_CLIENT_SHA="${CC_CLIENT_SHA:-}" \
+  TURNSTILE_SECRET="${TURNSTILE_SECRET:-}" \
+  TURNSTILE_HOSTNAMES="${TURNSTILE_HOSTNAMES:-}" \
   python3 - <<'PY'
 import json, os, secrets
 
@@ -79,6 +81,8 @@ take("CC_CHECK_PROXY_TEMPLATE", "check_proxy_template")
 take("CC_CHECK_DEFAULT_CC", "check_default_cc")
 take("CC_CLIENT_VERSION", "client_version")
 take("CC_CLIENT_SHA", "client_sha")
+take("TURNSTILE_SECRET", "turnstile_secret")
+take("TURNSTILE_HOSTNAMES", "turnstile_hostnames")
 
 rp = os.environ.get("CC_REQUIRE_PROXY", "")
 if rp.strip():

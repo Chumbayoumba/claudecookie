@@ -79,13 +79,16 @@ REASON_LABEL = {
     "expired": "сессия отклонена / истекла",
     "unreachable": "Claude не ответил",
     "rate_limited": "лимит запросов",
+    "captcha_failed": "капча не прошла",
+    "convert_failed": "не удалось получить credential",
     "invalid": "невалидна",
 }
 JSON_FORMATS = ("cookie-editor", "puppeteer", "key-value")
 SPARK = "▁▂▃▄▅▆▇█"
 TG_DOC_MAX = 45 * 1024 * 1024
 TOGGLE_KEYS = frozenset({
-    "push_convert", "push_check_valid", "push_check_invalid", "daily_summary",
+    "push_convert", "push_check_valid", "push_check_invalid", "push_credential",
+    "daily_summary",
 })
 WORK = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cc-bot")
 _recheck_guard = threading.Lock()
@@ -427,7 +430,7 @@ def view_trend(conn) -> str:
 def view_recent(conn):
     rows = conn.execute(
         "SELECT id, ts, type, from_fmt, to_fmt, n, country, domains, valid, reason, info "
-        "FROM events WHERE type IN ('convert','check') ORDER BY id DESC LIMIT 8"
+        "FROM events WHERE type IN ('convert','check','credential') ORDER BY id DESC LIMIT 8"
     ).fetchall()
     if not rows:
         return "<b>🕐 Последнее</b>\n\n<i>Пока нет событий.</i>", _back()
@@ -443,6 +446,12 @@ def view_recent(conn):
                 reason = REASON_LABEL.get(r["reason"] or "invalid", r["reason"] or "invalid")
                 lines.append(f"<code>{tm}</code> · 🔎❌ {reason}")
             kb.append([{"text": f"📄 Проверка {tm}", "callback_data": f"file:{r['id']}"}])
+        elif r["type"] == "credential":
+            info = load_info(r)
+            email = info.get("email") or "—"
+            plan = info.get("plan") or "Claude"
+            mark = "✅" if r["valid"] == 1 else "❌"
+            lines.append(f"<code>{tm}</code> · 🎫{mark} {_html(plan)} · <code>{_html(email)}</code>")
         else:
             d = (r["domains"] or "").split(",")[0] if r["domains"] else "—"
             lines.append(
@@ -459,6 +468,7 @@ def view_settings(conn) -> tuple[str, list]:
     conv = get_setting(conn, "push_convert", "1") == "1"
     valid = get_setting(conn, "push_check_valid", "1") == "1"
     invalid = get_setting(conn, "push_check_invalid", "1") == "1"
+    cred = get_setting(conn, "push_credential", "1") == "1"
     daily = get_setting(conn, "daily_summary", "1") == "1"
     txt = (
         "<b>⚙️ Настройки уведомлений</b>\n\n"
@@ -466,6 +476,7 @@ def view_settings(conn) -> tuple[str, list]:
         f"🔄 Пуш о конвертациях: <b>{'вкл' if conv else 'выкл'}</b>\n"
         f"✅ Пуш о валидных проверках: <b>{'вкл' if valid else 'выкл'}</b>\n"
         f"❌ Пуш о невалидных проверках: <b>{'вкл' if invalid else 'выкл'}</b>\n"
+        f"🎫 Пуш о credential: <b>{'вкл' if cred else 'выкл'}</b>\n"
         f"📅 Дневная сводка (09:00 UTC): <b>{'вкл' if daily else 'выкл'}</b>"
     )
     kb = [
@@ -475,6 +486,8 @@ def view_settings(conn) -> tuple[str, list]:
           "callback_data": "set:push_check_valid"}],
         [{"text": f"❌ Невалидные: {'выключить' if invalid else 'включить'}",
           "callback_data": "set:push_check_invalid"}],
+        [{"text": f"🎫 Credential: {'выключить' if cred else 'включить'}",
+          "callback_data": "set:push_credential"}],
         [{"text": f"📅 Сводка: {'выключить' if daily else 'включить'}",
           "callback_data": "set:daily_summary"}],
         [{"text": "‹ Назад", "callback_data": "home"}],
@@ -1025,6 +1038,7 @@ def push_loop():
             migrate_push_settings(conn)
             conn.commit()
             _push_kind(conn, "convert", "push_convert", "last_push_convert_id", _push_conversion)
+            _push_kind(conn, "credential", "push_credential", "last_push_credential_id", _push_credential)
             _push_checks(conn)
             conn.close()
         except Exception as e:
@@ -1075,6 +1089,28 @@ def _push_checks(conn) -> None:
         except Exception as e:
             log(f"push check #{r['id']} failed: {e!r}")
         set_state(conn, marker := "last_push_check_id", r["id"])
+
+
+def _push_credential(r):
+    tm = datetime.fromtimestamp(r["ts"], timezone.utc).strftime("%d.%m %H:%M")
+    info = load_info(r)
+    email = info.get("email") or "—"
+    plan = info.get("plan") or "Claude"
+    if r["valid"] == 1:
+        send(
+            OWNER,
+            "🎫 <b>Новый credential</b>\n"
+            f"План: <b>{_html(plan)}</b>\n"
+            f"Email: <code>{_html(email)}</code>\n"
+            f"{tm}",
+        )
+    else:
+        reason = REASON_LABEL.get(r["reason"] or "convert_failed", r["reason"] or "convert_failed")
+        send(
+            OWNER,
+            "🎫 <b>Credential не собран</b>\n"
+            f"Причина: {reason} · {tm}",
+        )
 
 
 def _push_conversion(r):

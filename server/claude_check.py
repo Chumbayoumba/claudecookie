@@ -493,24 +493,76 @@ def _client_headers() -> dict[str, str]:
     return headers
 
 
-def _request_headers(url: str, cookie: str, device_id: str | None) -> dict[str, str]:
-    referer = (
-        "https://claude.ai/settings/usage" if "/usage" in url else "https://claude.ai/"
-    )
+def _request_headers(
+    url: str,
+    cookie: str,
+    device_id: str | None,
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    if "console.anthropic.com" in url:
+        origin = "https://console.anthropic.com"
+        referer = "https://console.anthropic.com/"
+        site = "same-site" if "console.anthropic.com" in url else "cross-site"
+    else:
+        origin = "https://claude.ai"
+        referer = (
+            "https://claude.ai/settings/usage" if "/usage" in url else "https://claude.ai/"
+        )
+        site = "same-origin"
     headers = {
         "Cookie": cookie,
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
-        "Origin": "https://claude.ai",
+        "Origin": origin,
         "Referer": referer,
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Site": site,
     }
     headers.update(_client_headers())
     if device_id:
         headers["anthropic-device-id"] = device_id
+    if extra:
+        headers.update(extra)
     return headers
+
+
+def default_http_request(
+    method: str,
+    url: str,
+    cookie: str,
+    device_id: str | None,
+    *,
+    json_body: Any | None = None,
+    extra_headers: dict[str, str] | None = None,
+    country: str | None = None,
+    session_id: str | None = None,
+    allow_redirects: bool = False,
+) -> tuple[int, Any, dict | None, str | None]:
+    """GET/POST through the same proxy + Chrome impersonation as the checker.
+
+    Returns (status, body, set_cookie, location). Refuses to egress without
+    curl_cffi — a plain urllib call can burn the cookie.
+    """
+    headers = _request_headers(url, cookie, device_id, extra_headers)
+    if json_body is not None:
+        headers["Content-Type"] = "application/json"
+        headers["Accept"] = "application/json"
+    proxy = select_proxy(country, session_id)
+    try:
+        from curl_cffi import requests as cf
+    except ImportError:
+        print("check ERROR curl_cffi unavailable; refusing insecure egress", flush=True)
+        return 0, None, None, None
+    return _curl_cffi_request(
+        cf,
+        method,
+        url,
+        headers,
+        proxy,
+        json_body=json_body,
+        allow_redirects=allow_redirects,
+    )
 
 
 def default_http_get(
@@ -521,16 +573,10 @@ def default_http_get(
     country: str | None = None,
     session_id: str | None = None,
 ) -> tuple[int, Any, dict | None]:
-    headers = _request_headers(url, cookie, device_id)
-    proxy = select_proxy(country, session_id)
-    try:
-        from curl_cffi import requests as cf
-    except ImportError:
-        # Without a browser TLS fingerprint any request looks like a bot and can
-        # burn the cookie, so refuse the egress instead of falling back to urllib.
-        print("check ERROR curl_cffi unavailable; refusing insecure egress", flush=True)
-        return 0, None, None
-    return _curl_cffi_get(cf, url, headers, proxy)
+    status, body, set_cookie, _location = default_http_request(
+        "GET", url, cookie, device_id, country=country, session_id=session_id
+    )
+    return status, body, set_cookie
 
 
 def _proxy_map(proxy: str | None) -> dict[str, str] | None:
@@ -557,9 +603,25 @@ def _extract_set_cookie(resp: Any) -> dict[str, str]:
     return out
 
 
-def _curl_cffi_get(
-    cf: Any, url: str, headers: dict[str, str], proxy: str | None
-) -> tuple[int, Any, dict | None]:
+def _response_location(resp: Any) -> str | None:
+    try:
+        headers = getattr(resp, "headers", None) or {}
+        value = headers.get("Location") or headers.get("location")
+    except Exception:
+        return None
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _curl_cffi_request(
+    cf: Any,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    proxy: str | None,
+    *,
+    json_body: Any | None = None,
+    allow_redirects: bool = False,
+) -> tuple[int, Any, dict | None, str | None]:
     global _working_impersonate
     names: list[str] = []
     if _working_impersonate:
@@ -569,23 +631,34 @@ def _curl_cffi_get(
             names.append(name)
     kwargs: dict[str, Any] = {
         "headers": headers,
-        "timeout": 20,
-        "allow_redirects": False,
+        "timeout": 25,
+        "allow_redirects": allow_redirects,
     }
     proxies = _proxy_map(proxy)
     if proxies:
         kwargs["proxies"] = proxies
+    if json_body is not None:
+        kwargs["data"] = json.dumps(json_body).encode("utf-8")
+    verb = (method or "GET").upper()
     for name in names:
         try:
-            resp = cf.get(url, impersonate=name, **kwargs)
+            if verb == "POST":
+                resp = cf.post(url, impersonate=name, **kwargs)
+            else:
+                resp = cf.get(url, impersonate=name, **kwargs)
         except Exception as exc:
             message = str(exc).lower()
             if "impersonat" in message or "not supported" in message:
                 continue
-            return 0, None, None
+            return 0, None, None, None
         _working_impersonate = name
-        return resp.status_code, _decode_body(resp.content), _extract_set_cookie(resp)
-    return 0, None, None
+        return (
+            resp.status_code,
+            _decode_body(resp.content),
+            _extract_set_cookie(resp),
+            _response_location(resp),
+        )
+    return 0, None, None, None
 
 
 def _decode_body(raw: bytes) -> Any:

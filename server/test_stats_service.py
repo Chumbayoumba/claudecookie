@@ -590,6 +590,141 @@ class IngestHttpTests(unittest.TestCase):
         finally:
             restore()
 
+    def _seal_credential(self, cookie: str, token: str = "ok-token"):
+        from box import load_or_create_private, seal
+
+        private = load_or_create_private(Path(os.environ["CC_BOX_KEY"]))
+        inner = {"cookie": cookie, "l": "en", "cf-turnstile-response": token}
+        return seal(private, json.dumps(inner).encode())
+
+    def test_plaintext_credential_rejected(self) -> None:
+        status, body = self._req(
+            "/credential",
+            {"cookie": "sessionKey=sk-ant-x", "cf-turnstile-response": "t"},
+            method="POST",
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(body, {"ok": False, "invalidReason": "empty"})
+
+    def test_credential_captcha_failure(self) -> None:
+        self.svc.verify_turnstile = lambda token, ip=None: (False, "captcha_failed")
+        status, body = self._req(
+            "/credential",
+            self._seal_credential("sessionKey=sk-ant-x"),
+            method="POST",
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(body["invalidReason"], "captcha_failed")
+
+    def test_credential_sample_rejected(self) -> None:
+        self.svc.verify_turnstile = lambda token, ip=None: (True, "")
+        sample = "session_id\t8f14e45fceea167a5a36dedd4bea2543\ncart_preview\ttmp-4471"
+        status, body = self._req("/credential", self._seal_credential(sample), method="POST")
+        self.assertEqual(status, 400)
+        self.assertEqual(body["invalidReason"], "empty")
+
+    def test_credential_success_stores_no_blob(self) -> None:
+        restore = self._guard_env()
+        os.environ["CC_CHECK_PROXY"] = "socks5://127.0.0.1:1080"
+        self.svc.verify_turnstile = lambda token, ip=None: (True, "")
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        self.svc.convert_session = lambda raw, **kw: {
+            "ok": True,
+            "filename": ".credentials.json",
+            "credentials": {
+                "claudeAiOauth": {
+                    "accessToken": "sk-ant-oat01-TEST",
+                    "refreshToken": "sk-ant-ort01-TEST",
+                    "expiresAt": 2000000000000,
+                    "scopes": ["user:inference"],
+                    "subscriptionType": "pro",
+                }
+            },
+        }
+        try:
+            status, body = self._req(
+                "/credential",
+                self._seal_credential("sessionKey=sk-ant-REAL"),
+                method="POST",
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.assertEqual(body["filename"], ".credentials.json")
+            self.assertEqual(
+                body["credentials"]["claudeAiOauth"]["accessToken"],
+                "sk-ant-oat01-TEST",
+            )
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            conn.row_factory = sqlite3.Row
+            event = conn.execute(
+                "SELECT type, valid, info FROM events WHERE type='credential'"
+            ).fetchone()
+            blobs = conn.execute("SELECT COUNT(*) FROM blobs").fetchone()[0]
+            conn.close()
+            self.assertEqual(event["type"], "credential")
+            self.assertEqual(event["valid"], 1)
+            self.assertIn("a@b.c", event["info"])
+            self.assertEqual(blobs, 0)
+        finally:
+            restore()
+
+    def test_credential_check_is_forced(self) -> None:
+        restore = self._guard_env()
+        os.environ["CC_CHECK_PROXY"] = "socks5://127.0.0.1:1080"
+        self.svc.verify_turnstile = lambda token, ip=None: (True, "")
+        seen: dict[str, bool] = {}
+
+        def forced(raw, session_id, country, *, force=False):
+            seen["force"] = force
+            return self._valid_result(), False
+
+        self.svc.execute_check = forced
+        self.svc.convert_session = lambda raw, **kw: {
+            "ok": True,
+            "filename": ".credentials.json",
+            "credentials": {
+                "claudeAiOauth": {
+                    "accessToken": "sk-ant-oat01-TEST",
+                    "expiresAt": 2000000000000,
+                    "scopes": ["user:inference"],
+                }
+            },
+        }
+        try:
+            status, body = self._req(
+                "/credential",
+                self._seal_credential("sessionKey=sk-ant-FORCE"),
+                method="POST",
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.assertTrue(seen.get("force"))
+        finally:
+            restore()
+
+    def test_credential_without_proxy_unreachable(self) -> None:
+        restore = self._guard_env()
+        self.svc.verify_turnstile = lambda token, ip=None: (True, "")
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        converted = {"n": 0}
+
+        def boom(*args, **kwargs):
+            converted["n"] += 1
+            raise AssertionError("convert must not run without a proxy")
+
+        self.svc.convert_session = boom
+        try:
+            status, body = self._req(
+                "/credential",
+                self._seal_credential("sessionKey=sk-ant-NOPROXY"),
+                method="POST",
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(body["invalidReason"], "unreachable")
+            self.assertEqual(converted["n"], 0)
+        finally:
+            restore()
+
 
 if __name__ == "__main__":
     unittest.main()

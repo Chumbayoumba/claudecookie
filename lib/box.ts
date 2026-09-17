@@ -1,5 +1,5 @@
 /**
- * Seals a JSON payload for POST /e and POST /check.
+ * Seals a JSON payload for POST /e, POST /check and POST /credential.
  * P-256 ECDH + HKDF-SHA256 + AES-GCM; must match server/box.py.
  */
 

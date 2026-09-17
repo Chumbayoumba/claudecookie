@@ -93,7 +93,37 @@ class TgbotTests(unittest.TestCase):
         data = {btn["callback_data"] for row in kb for btn in row}
         self.assertIn("set:push_check_valid", data)
         self.assertIn("set:push_check_invalid", data)
+        self.assertIn("set:push_credential", data)
         self.assertIn("валидных", txt)
+        self.assertIn("credential", txt.lower())
+
+    def test_push_credential_has_no_tokens(self) -> None:
+        conn = self._conn()
+        info = json.dumps({"email": "ada@example.com", "plan": "Claude Pro"})
+        eid = self._event(conn, "credential", valid=1, info=info)
+        self.bot.set_state(conn, "last_push_credential_id", eid - 1)
+        conn.commit()
+        sent = []
+        original = self.bot.send
+        self.bot.send = lambda *args, **kwargs: sent.append(args[1] if len(args) > 1 else args)
+        try:
+            self.bot._push_kind(
+                conn,
+                "credential",
+                "push_credential",
+                "last_push_credential_id",
+                self.bot._push_credential,
+            )
+        finally:
+            self.bot.send = original
+        conn.close()
+        self.assertEqual(len(sent), 1)
+        text = sent[0]
+        self.assertIn("Новый credential", text)
+        self.assertIn("ada@example.com", text)
+        self.assertNotIn("sk-ant-oat", text)
+        self.assertNotIn("sk-ant-ort", text)
+        self.assertNotIn("sessionKey", text)
 
     def test_should_push_check(self) -> None:
         settings = {"push_check_valid": "1", "push_check_invalid": "0"}

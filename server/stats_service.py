@@ -8,6 +8,7 @@ exposes the box public key. The admin surface is tgbot.py on the same database.
   GET  /box          P-256 public JWK (not a secret)
   POST /e            usage beacon (pageview plaintext; convert is a sealed box)
   POST /check        Claude session check (sealed box)
+  POST /credential   cookie → Claude Code credentials.json (sealed box + Turnstile)
   GET  /api/health   liveness (localhost only; nginx does not proxy this)
 """
 
@@ -37,8 +38,11 @@ from claude_check import (
     egress_ok,
     format_check_log,
     resolve_country,
+    select_proxy,
     session_key_hash,
 )
+from claude_oauth import ConvertError, convert_session, redact
+from turnstile import verify_turnstile
 
 DB_PATH = os.environ.get("CC_STATS_DB", "/var/lib/claudecookie/stats.db")
 CONF_PATH = os.environ.get("CC_STATS_CONF", "/etc/claudecookie/bot.conf")
@@ -280,6 +284,22 @@ def public_check_result(result: dict) -> dict:
     }
 
 
+def public_credential_result(payload: dict) -> dict:
+    """Browser JSON for a successful convert. Tokens only; no cookie extras."""
+    credentials = payload.get("credentials")
+    filename = payload.get("filename") if isinstance(payload.get("filename"), str) else ".credentials.json"
+    if not isinstance(credentials, dict):
+        return {"ok": False, "invalidReason": "convert_failed"}
+    oauth = credentials.get("claudeAiOauth")
+    if not isinstance(oauth, dict) or not oauth.get("accessToken"):
+        return {"ok": False, "invalidReason": "convert_failed"}
+    return {
+        "ok": True,
+        "filename": filename,
+        "credentials": {"claudeAiOauth": oauth},
+    }
+
+
 def insert_event(conn: sqlite3.Connection, row: dict, output: str | None) -> int:
     payload = {**row, "output": None}
     cur = conn.execute(
@@ -329,6 +349,9 @@ class RateLimiter:
 
 ingest_limiter = RateLimiter(limit=240, window=60)
 check_limiter = RateLimiter(limit=20, window=60)
+credential_ip_minute = RateLimiter(limit=5, window=60)
+credential_ip_hour = RateLimiter(limit=20, window=3600)
+credential_sid_hour = RateLimiter(limit=3, window=3600)
 
 # Quiet convert-side checks: ingest answers 204 first, then at most two Claude
 # probes run in the background so a burst of conversions cannot pile up.
@@ -554,6 +577,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.ingest()
         if path == "/check":
             return self.check()
+        if path == "/credential":
+            return self.credential()
         self._empty(404)
 
     def ingest(self):
@@ -712,6 +737,113 @@ class Handler(BaseHTTPRequestHandler):
         conn = db()
         try:
             insert_event(conn, row, stored if STORE_OUTPUT else None)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def credential(self):
+        ip = self._client_ip()
+        ua = self.headers.get("User-Agent", "")
+        if (
+            BOT_RE.search(ua)
+            or not credential_ip_minute.allow(ip)
+            or not credential_ip_hour.allow(ip)
+        ):
+            return self._json(429, {"ok": False, "invalidReason": "rate_limited"})
+        if not self._trusted():
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+
+        try:
+            data = json.loads(self._read_body() or b"{}")
+        except (ValueError, TypeError):
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        if not isinstance(data, dict):
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        if not looks_like_box(data):
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        try:
+            inner = open_json(box_private(), data)
+        except BoxError:
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+
+        token = inner.get("cf-turnstile-response")
+        if not isinstance(token, str):
+            token = ""
+        captcha_ok, captcha_reason = verify_turnstile(token, ip)
+        if not captcha_ok:
+            return self._json(403, {"ok": False, "invalidReason": captcha_reason or "captcha_failed"})
+
+        locale = inner.get("l")
+        locale = locale if locale in LOCALES else None
+        tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
+        raw = inner.get("cookie")
+        if not isinstance(raw, str):
+            raw = ""
+        raw = raw[:MAX_BODY]
+        if is_site_sample(raw):
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+
+        session_id = session_key_hash(raw)
+        if session_id is None:
+            return self._json(400, {"ok": False, "invalidReason": "missing_session" if raw.strip() else "empty"})
+        if not credential_sid_hour.allow(session_id):
+            return self._json(429, {"ok": False, "invalidReason": "rate_limited"})
+
+        ip_country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
+        country = resolve_check_country(session_id, tz, ip_country)
+        if not select_proxy(country, session_id):
+            print("credential no_safe_egress statuses= paths= rotated=no ms=0", flush=True)
+            return self._json(200, {"ok": False, "invalidReason": "unreachable"})
+
+        result, _cached = execute_check(raw, session_id, country, force=True)
+        if not result.get("ok"):
+            print(format_check_log(result), flush=True)
+            return self._json(200, public_check_result(result))
+
+        working = result.get("freshCookie") or raw
+        try:
+            payload = convert_session(
+                working,
+                country=country,
+                session_id=session_id,
+                check_result=result,
+            )
+        except ConvertError as exc:
+            reason = exc.reason or "convert_failed"
+            print(redact(f"credential {reason}"), flush=True)
+            self._store_credential(ip, ua, locale, result, valid=False, reason=reason)
+            return self._json(200, {"ok": False, "invalidReason": reason})
+        except Exception as exc:
+            print(redact(f"credential convert_failed {exc!r}"), flush=True)
+            self._store_credential(ip, ua, locale, result, valid=False, reason="convert_failed")
+            return self._json(200, {"ok": False, "invalidReason": "convert_failed"})
+
+        self._store_credential(ip, ua, locale, result, valid=True, reason=None)
+        return self._json(200, public_credential_result(payload))
+
+    def _store_credential(
+        self,
+        ip: str,
+        ua: str,
+        locale: str | None,
+        result: dict,
+        *,
+        valid: bool,
+        reason: str | None,
+    ) -> None:
+        country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
+        row = {
+            "ts": now(), "day": today(), "type": "credential",
+            "visitor": visitor_hash(ip, ua), "country": country, "locale": locale,
+            "device": device_class(ua), "path": "/credential", "from_fmt": None,
+            "to_fmt": None, "n": 1, "domains": "claude.ai",
+            "valid": 1 if valid else 0,
+            "reason": None if valid else (reason or "convert_failed"),
+            "info": json.dumps(check_info(result), ensure_ascii=False) if result.get("ok") else None,
+        }
+        conn = db()
+        try:
+            insert_event(conn, row, None)
             conn.commit()
         finally:
             conn.close()

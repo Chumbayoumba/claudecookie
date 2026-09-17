@@ -50,6 +50,8 @@ python3 -c 'import curl_cffi'
 echo "==> Application code"
 install -o root -g root -m 0644 "$SCRIPT_DIR/stats_service.py" "$APP_DIR/stats_service.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/claude_check.py"  "$APP_DIR/claude_check.py"
+install -o root -g root -m 0644 "$SCRIPT_DIR/claude_oauth.py"  "$APP_DIR/claude_oauth.py"
+install -o root -g root -m 0644 "$SCRIPT_DIR/turnstile.py"     "$APP_DIR/turnstile.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/box.py"           "$APP_DIR/box.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/tgbot.py"         "$APP_DIR/tgbot.py"
 

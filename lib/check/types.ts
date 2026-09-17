@@ -20,3 +20,5 @@ export type InvalidReason =
   | 'expired'
   | 'unreachable'
   | 'rate_limited'
+  | 'captcha_failed'
+  | 'convert_failed'

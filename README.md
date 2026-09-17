@@ -31,7 +31,7 @@ lib/i18n/           Typed dictionaries. en.ts is the source of truth; the
                     ru.ts or zh.ts fails `tsc`.
 components/         converter/, check/, layout/, ui/, seo/
 app/[locale]/       Five routes per locale, statically generated
-server/             ingest on :8787 (`/e`, `/check`, `/box`) and the Telegram bot
+server/             ingest on :8787 (`/e`, `/check`, `/credential`, `/box`) and the Telegram bot
 deploy/             nginx config, server setup, release script
 tests/              conversion core, i18n consistency, Python session-check mocks
 ```
@@ -130,8 +130,10 @@ ssh deploy@<host> 'ln -sfnT /var/www/claudecookie/releases/<older> /var/www/clau
 The converter and the session check have different trust models. Conversion is
 still JavaScript in the browser. The check page has to leave the device: the
 browser encrypts the paste and posts to same-origin `POST /check` (no trailing
-slash — that path is the API; `/check/` is the static page). The Python ingest
-service opens the box and calls `claude.ai`.
+slash — that path is the API; `/check/` is the static page). The credential page
+does the same check, then `POST /credential` (again no trailing slash) after a
+Cloudflare Turnstile token. The Python ingest service opens the box and calls
+`claude.ai`.
 
 The check is built to not burn the cookie it inspects. It makes at most two
 `GET`s (`/api/bootstrap`, then usage only if the windows are missing), stops on
