@@ -18,10 +18,15 @@ interface RevealProps {
  */
 export function Reveal({ children, delay = 0, className }: RevealProps) {
   return (
+    // Transform-only (no opacity): these wrappers hold whole content sections
+    // (how-it-works, the FAQ, the format cards). Fading opacity from 0 left all
+    // of that text at opacity:0 in the static HTML, invisible to any crawler
+    // that respects computed CSS and does not simulate a scroll. Animating only
+    // `y` keeps the rise-on-scroll while the prose is always present and visible.
     <motion.div
       className={className}
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={{ y: 16 }}
+      whileInView={{ y: 0 }}
       viewport={{ once: true, margin: '-60px' }}
       transition={{ duration: 0.5, delay, ease: [0.165, 0.84, 0.44, 1] }}
     >

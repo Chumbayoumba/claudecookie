@@ -5,23 +5,31 @@ import { LOCALES, LOCALE_META, localeUrl } from '@/lib/i18n/config'
 export const dynamic = 'force-static'
 
 
-/** Every page, in every locale, with the full alternates set on each entry. */
+/**
+ * Every page, in every locale, with the full alternates set on each entry.
+ *
+ * `lastModified` is a hand-maintained per-route date, NOT `new Date()`: a
+ * build-time timestamp is identical across all URLs and churns on every deploy,
+ * which teaches Google and Yandex to distrust the lastmod signal entirely. Bump
+ * a route's date only when that page's content actually changes.
+ */
 const ROUTES = [
-  { path: '/', priority: 1, changeFrequency: 'monthly' as const },
-  { path: '/check', priority: 0.7, changeFrequency: 'monthly' as const },
-  { path: '/credential', priority: 0.5, changeFrequency: 'monthly' as const },
-  { path: '/formats/netscape-cookies-txt', priority: 0.8, changeFrequency: 'yearly' as const },
-  { path: '/formats/json-cookies', priority: 0.8, changeFrequency: 'yearly' as const },
-  { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' as const },
+  { path: '/', priority: 1, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
+  { path: '/check', priority: 0.7, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
+  { path: '/claude-code-login', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
+  { path: '/claude-usage-limits', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
+  // /credential is intentionally omitted: it is a noindexed placeholder (see
+  // app/[locale]/credential/page.tsx). Re-add it when it has real content.
+  { path: '/formats/netscape-cookies-txt', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-17' },
+  { path: '/formats/json-cookies', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-14' },
+  { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' as const, lastModified: '2026-09-17' },
 ]
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date()
-
   return ROUTES.flatMap((route) =>
     LOCALES.map((locale) => ({
       url: localeUrl(locale, route.path),
-      lastModified,
+      lastModified: route.lastModified,
       changeFrequency: route.changeFrequency,
       priority: route.priority,
       alternates: {

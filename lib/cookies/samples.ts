@@ -73,3 +73,14 @@ export const SAMPLE_COOKIE_EDITOR = JSON.stringify(
 export function sampleFor(detected: CookieFormat | null): string {
   return detected === 'netscape' ? SAMPLE_COOKIE_EDITOR : SAMPLE_NETSCAPE
 }
+
+/**
+ * Values that exist only in the official Sample payloads above. A real paste
+ * that happens to use example.com (the default-domain placeholder) must still
+ * be recorded; these two tokens together mean the built-in demo.
+ */
+const SAMPLE_FINGERPRINT = ['8f14e45fceea167a5a36dedd4bea2543', 'tmp-4471'] as const
+
+export function isSiteSample(text: string): boolean {
+  return SAMPLE_FINGERPRINT.every((marker) => text.includes(marker))
+}

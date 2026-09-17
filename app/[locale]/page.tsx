@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { GoalLink } from '@/components/analytics/GoalLink'
 import { Converter } from '@/components/converter/Converter'
 import { Hero } from '@/components/converter/Hero'
 import { JsonLd } from '@/components/seo/JsonLd'
@@ -69,8 +70,9 @@ export default async function HomePage({ params }: PageProps) {
               <h2 className="mt-4 text-display-xs sm:text-display-s">{dict.checkPromo.title}</h2>
               <p className="mt-4 text-paragraph-xs text-ink-secondary">{dict.checkPromo.body}</p>
             </div>
-            <a
+            <GoalLink
               href={localePath(locale, '/check')}
+              goal="checker_cta_click"
               className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-main border border-transparent bg-clay px-6 font-sans text-detail-l font-medium whitespace-nowrap text-clay-contrast transition-colors duration-200 ease-ant hover:bg-clay-hover"
             >
               {dict.checkPromo.cta}
@@ -83,7 +85,7 @@ export default async function HomePage({ params }: PageProps) {
                   strokeLinejoin="round"
                 />
               </svg>
-            </a>
+            </GoalLink>
           </div>
         </Reveal>
       </section>
@@ -113,22 +115,31 @@ export default async function HomePage({ params }: PageProps) {
       <section className="border-y border-line bg-bg-secondary py-16 lg:py-24">
         <div className="ant-container">
           <Reveal>
-            <h2 className="text-display-s sm:text-display-m">{dict.pages.json.formatsTitle}</h2>
+            <h2 className="text-display-s sm:text-display-m">{dict.home.formatsTitle}</h2>
           </Reveal>
 
           <div className="mt-10 grid gap-px overflow-hidden rounded-large border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
-            {ALL_FORMATS.map((format, i) => (
-              <Reveal key={format} delay={i * 0.05} className="bg-bg">
-                <div className="h-full p-6">
-                  <h3 className="font-sans text-detail-l font-medium text-ink">
-                    {dict.formats[format].label}
-                  </h3>
-                  <p className="mt-2 font-mono text-detail-xs text-ink-faint">
-                    {dict.formats[format].hint}
-                  </p>
-                </div>
-              </Reveal>
-            ))}
+            {ALL_FORMATS.map((format, i) => {
+              // Each card links to the reference page that documents it - the
+              // home page's only contextual links into the two /formats/ pages,
+              // which otherwise get inbound links from the footer alone.
+              const href =
+                format === 'netscape'
+                  ? localePath(locale, '/formats/netscape-cookies-txt')
+                  : localePath(locale, '/formats/json-cookies')
+              return (
+                <Reveal key={format} delay={i * 0.05} className="bg-bg">
+                  <a href={href} className="group block h-full p-6 no-underline transition-colors duration-200 ease-ant hover:bg-surface-hover">
+                    <h3 className="font-sans text-detail-l font-medium text-ink group-hover:text-clay">
+                      {dict.formats[format].label}
+                    </h3>
+                    <p className="mt-2 font-mono text-detail-xs text-ink-faint">
+                      {dict.formats[format].hint}
+                    </p>
+                  </a>
+                </Reveal>
+              )
+            })}
           </div>
         </div>
       </section>

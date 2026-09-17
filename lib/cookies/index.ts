@@ -1,6 +1,7 @@
 import { detectFormat, oppositeFormat } from './detect'
 import { isLossy } from './meta'
 import { cleanInput } from './normalize'
+import { splitCookieSets } from './split'
 import { parseHeader } from './parse/header'
 import { parseJson } from './parse/json'
 import { parseNetscape } from './parse/netscape'
@@ -22,6 +23,7 @@ import {
 } from './types'
 
 export * from './types'
+export { splitCookieSets, MAX_SETS } from './split'
 export { detectFormat, oppositeFormat } from './detect'
 export { FORMAT_META, isLossy } from './meta'
 export { computeStats } from './stats'
@@ -103,6 +105,47 @@ export function convert(input: string, opts: ConvertOptions = {}): ConvertResult
     cookies,
     issues,
     stats: computeStats(cookies, now),
+  }
+}
+
+/**
+ * Splits a paste into separate cookie sets and converts each independently.
+ * A single set (the common case) yields a one-element array identical to `convert()`.
+ */
+export function convertBatch(input: string, opts: ConvertOptions = {}): ConvertResult[] {
+  const sets = splitCookieSets(input)
+  if (sets.length === 0) return [convert('', opts)]
+  return sets.map((set) => convert(set, opts))
+}
+
+/**
+ * Splits a paste into separate cookie sets, then merges every set's cookies into a
+ * single output (deduped, serialised once) — the "combine into one file" mode.
+ */
+export function convertCombined(input: string, opts: ConvertOptions = {}): ConvertResult {
+  const now = opts.now ?? Math.floor(Date.now() / 1000)
+  const results = convertBatch(input, opts).filter((r) => r.ok)
+  const first = results[0]
+  if (!first) {
+    // Nothing parsed — surface the first set's result (carries the error/issues).
+    return convert(splitCookieSets(input)[0] ?? '', opts)
+  }
+  const detected = first.detected
+  const target = opts.target ?? first.target
+  const merged = dedupe({
+    cookies: results.flatMap((r) => r.cookies),
+    issues: [],
+  })
+  const issues = [...merged.issues]
+  issues.push(...lossWarnings(merged.cookies, detected ?? target, target))
+  return {
+    ok: merged.cookies.length > 0,
+    detected,
+    target,
+    output: serialize(target, merged.cookies),
+    cookies: merged.cookies,
+    issues,
+    stats: computeStats(merged.cookies, now),
   }
 }
 

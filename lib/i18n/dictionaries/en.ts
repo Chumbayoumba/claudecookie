@@ -24,9 +24,9 @@ const statsEn: StatLabels = {
 export const en = {
   meta: {
     home: {
-      title: 'Cookie Converter — Netscape cookies.txt to JSON and back',
+      title: 'Cookie Converter & Claude cookie checker — cookies.txt to JSON',
       description:
-        'Convert cookies between Netscape cookies.txt and JSON (Cookie-Editor, Puppeteer, key-value, header). The format is detected automatically. Runs entirely in your browser.',
+        'Convert cookies between Netscape cookies.txt and JSON — Cookie-Editor, Puppeteer, key-value, header. Format auto-detected. Free, runs entirely in your browser.',
     },
     netscape: {
       title: 'The Netscape cookies.txt format, field by field',
@@ -34,9 +34,9 @@ export const en = {
         'What each of the seven tab-separated fields in a Netscape cookies.txt file means, how the #HttpOnly_ prefix works, and which tools read and write this format.',
     },
     json: {
-      title: 'JSON cookie formats: Cookie-Editor, Puppeteer, key-value, header',
+      title: 'JSON cookie formats: Cookie-Editor, Puppeteer, key-value',
       description:
-        'The four JSON shapes cookies are exported in, with examples and a field-by-field mapping table showing what each one can and cannot store.',
+        'The four JSON shapes cookies are exported in, with live examples and a capability table showing which attributes each shape can and cannot store.',
     },
     privacy: {
       title: 'Privacy — how this site handles cookies you paste',
@@ -44,14 +44,24 @@ export const en = {
         'The converter runs in your browser. The session check sends an encrypted Claude cookie to this site’s backend and to Anthropic.',
     },
     check: {
-      title: 'Check a Claude cookie — plan, email, 5h and weekly usage',
+      title: 'Check a Claude cookie: valid? plan, 5h and weekly usage',
       description:
-        'Paste a Netscape or JSON Claude session cookie. The page reports whether it is valid, the account email and plan, and the 5-hour and weekly usage windows.',
+        'Paste a claude.ai session cookie (sessionKey), Netscape or JSON. See whether it is still valid, the plan, and the 5-hour and weekly usage windows.',
     },
     credential: {
       title: 'Get a credential file — turn a Claude cookie into credentials',
       description:
         'Turn a Claude session cookie into a credentials file for Claude Code and the API. In development.',
+    },
+    claudeCodeLogin: {
+      title: 'Claude Code “session expired / run /login” — how to fix',
+      description:
+        'Why Claude Code logs you out with “Your session has expired. Please run /login”, the /logout → /login fix, the ANTHROPIC_API_KEY trap, and how to clear ~/.claude/.credentials.json.',
+    },
+    claudeUsage: {
+      title: 'Claude 5-hour limit and weekly usage, when they reset',
+      description:
+        'How Claude Pro and Max meter the rolling 5-hour limit and the weekly cap, shared across claude.ai, Claude Code and Desktop — why you hit “usage limit reached”, and when it resets.',
     },
   },
 
@@ -64,6 +74,8 @@ export const en = {
     check: 'Check cookie',
     converter: 'Cookie converter',
     getCredential: 'Get credential file',
+    claudeCodeLogin: 'Claude Code login fix',
+    claudeUsage: 'Claude usage limits',
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
     language: 'Language',
@@ -74,10 +86,14 @@ export const en = {
 
   hero: {
     eyebrow: 'Cookie converter',
-    title: 'Cookies, in whatever format you need them.',
+    title: 'Convert cookies between Netscape cookies.txt and JSON.',
     subtitle:
-      'Netscape cookies.txt to JSON and back — Cookie-Editor, Puppeteer, key-value, or a raw Cookie header. Paste it and the format is worked out for you.',
+      'cookies.txt to JSON and back — Cookie-Editor, Puppeteer, key-value, or a raw Cookie header. Paste it and the format is worked out for you. Cookies, in whatever format you need them.',
     privacy: 'The conversion runs entirely in your browser.',
+  },
+
+  home: {
+    formatsTitle: 'Formats it converts between',
   },
 
   converter: {
@@ -90,6 +106,10 @@ export const en = {
     convertTo: 'Convert to',
     convert: 'Convert',
     swap: 'Swap direction',
+    batchSets: 'cookie sets',
+    combine: 'Combine into one file',
+    separate: 'Separate',
+    setWord: 'Set',
     copy: 'Copy',
     copyLine: 'Copy line',
     copied: 'Copied',
@@ -177,7 +197,7 @@ export const en = {
       },
       {
         q: 'Is anything I paste sent to a server?',
-        a: 'The conversion itself runs entirely in JavaScript in your browser. The Check cookie page is different: it sends an encrypted paste to this site’s backend and to Anthropic. The site also records anonymous usage statistics — which formats are converted and how often. There are no third-party analytics or trackers.',
+        a: 'The conversion itself runs entirely in JavaScript in your browser. The Check cookie page is different: it sends an encrypted paste to this site’s backend and to Anthropic. The site also records anonymous usage statistics — which formats are converted and how often — through Yandex Metrika. There is no Google Analytics.',
       },
       {
         q: 'Which JSON format should I pick?',
@@ -223,15 +243,16 @@ export const en = {
 
   check: {
     eyebrow: 'Claude session',
-    title: 'See whether a Claude cookie still works.',
+    title: 'Check a Claude sessionKey cookie: is it still valid?',
     subtitle:
       'Paste a Netscape or JSON export. The check reads the account, plan, and the 5-hour and weekly usage windows — the same numbers Claude shows in Settings.',
     inputLabel: 'Cookie file',
     placeholder:
-      'Netscape cookies.txt or a JSON cookie array. sessionKey / sessionKeyV3 is required.',
+      'Netscape cookies.txt or a JSON cookie array. sessionKey / sessionKeyV3 is required. Paste several to check them as a batch.',
     submit: 'Check cookie',
     checking: 'Checking…',
     clear: 'Clear',
+    batchHeading: 'Checked',
     valid: 'Valid cookie',
     invalid: 'This cookie is not valid',
     reasons: {
@@ -271,11 +292,61 @@ export const en = {
     privacyNote:
       'The paste is encrypted in your browser, then sent to this site’s backend and to Anthropic to run the check.',
     privacyLink: 'How this is handled',
+    howTitle: 'How to get your Claude session cookie',
+    howSteps: [
+      {
+        title: 'Open claude.ai while logged in',
+        body: 'In your browser, open DevTools (F12) → Application → Cookies → https://claude.ai and copy the sessionKey (or sessionKeyV3) value. Or use the Cookie-Editor extension → Export → JSON to grab the whole set at once.',
+      },
+      {
+        title: 'Paste it above',
+        body: 'Drop the cookies.txt or JSON export into the box, or paste just the sessionKey line. The paste is encrypted in your browser before it is sent — only the sessionKey / sessionKeyV3 is actually required.',
+      },
+      {
+        title: 'Read the result',
+        body: 'The checker calls Claude with the cookie and reports whether the session is still valid, the account email and plan (Free, Pro or Max), and how much of the 5-hour and weekly usage windows are left.',
+      },
+    ],
+    faqTitle: 'Claude cookie & session — questions',
+    faq: [
+      {
+        q: 'What is a Claude sessionKey?',
+        a: 'It is the cookie claude.ai sets when you sign in — a long token (sessionKey, or the newer sessionKeyV3) that authenticates your browser to Claude. Anyone who has it can act as your account, so treat it like a password. Claude Code stores the equivalent credential as an OAuth token in ~/.claude/.credentials.json rather than as this cookie.',
+      },
+      {
+        q: 'sessionKey or sessionKeyV3 — which do I need?',
+        a: 'Either one. Both are session cookies claude.ai sets; sessionKeyV3 is the newer format and some accounts have both. The checker reads whichever is present — only one is required.',
+      },
+      {
+        q: 'How long does a Claude sessionKey last?',
+        a: 'Roughly 30 days, unless it is revoked sooner. It rotates — and the old value stops working — when you log out, change your password, or sign out of your other sessions. After any of those you need a fresh export.',
+      },
+      {
+        q: 'Does checking a cookie invalidate it?',
+        a: 'No. The check only reads the account, plan and usage windows; it does not log you out or rotate the key. It runs one lightweight request, the same one claude.ai makes to draw your usage screen.',
+      },
+      {
+        q: 'Why does Claude say “session expired” or “run /login”?',
+        a: 'The token Claude holds is dead. Common causes: it aged out (the ~30-day cookie, or an access token that failed its background refresh), you changed your password, you signed out elsewhere, an admin revoked sessions, or your system clock is wrong. One more to check in Claude Code: an ANTHROPIC_API_KEY environment variable competing with your subscription login. The reliable fix is /logout then /login; if it loops, delete ~/.claude/.credentials.json and sign in again.',
+      },
+      {
+        q: 'What do the 5-hour and weekly windows mean?',
+        a: 'Claude Pro and Max meter usage two ways: a rolling 5-hour session window and a fixed weekly window, and that usage is shared across claude.ai, Claude Code and Claude Desktop. The 5-hour window resets five hours after your first message in it; the weekly window resets on a fixed day and time shown in Settings → Usage. This checker shows how much of each you have spent.',
+      },
+      {
+        q: 'Can I use this cookie with Claude Code?',
+        a: 'Claude Code signs in through its own OAuth flow (/login) and stores its credential in ~/.claude/.credentials.json, not as a pasted cookie. This page checks a claude.ai browser session — the same account — so it is useful for confirming your session is alive and seeing the plan and limits Claude Code will be subject to.',
+      },
+      {
+        q: 'Is it safe to paste my cookie here?',
+        a: 'The converter runs entirely in your browser. The session check is different: it has to send the cookie to this site’s backend and to Anthropic to run the check, so the paste is encrypted in your browser first. Only ever paste cookies for an account you control, and read the privacy page for exactly what happens.',
+      },
+    ],
   },
 
   checkPromo: {
     eyebrow: 'Also here',
-    title: 'Check whether a Claude cookie still works',
+    title: 'Is your Claude session cookie still alive?',
     body: 'Paste a Claude session export and see in seconds whether it is live — the account, the plan, and how much of the 5-hour and weekly limits are left.',
     cta: 'Open the checker',
   },
@@ -346,6 +417,7 @@ export const en = {
         'The value runs to the end of the line, so it can contain = and ; without escaping. Splitting on those characters will corrupt JWTs and base64 values.',
         'An expiry in the past is still a valid line. Tools will simply ignore the cookie, which looks identical to the cookie not being there at all.',
         'Some writers omit the trailing tab when the value is empty, leaving six fields instead of seven.',
+        'yt-dlp and other readers reject a file with “does not look like a netscape format cookies file” when the Netscape header or the tab separators are missing. Paste it here and download a normalised cookies.txt.',
       ],
       toolsTitle: 'Tools that use it',
       tools: [
@@ -409,11 +481,11 @@ export const en = {
         },
         {
           title: 'Anonymous usage statistics',
-          body: 'The site records anonymous statistics about how it is used — which formats are converted and how often. This is first-party only: there is no Google Analytics, no third-party tracker, and nothing that identifies you.',
+          body: 'The site records anonymous statistics about how it is used — which formats are converted and how often — through Yandex Metrika. There is no Google Analytics, and nothing that identifies you is stored for that purpose.',
         },
         {
           title: 'No third-party trackers',
-          body: 'There is no Google Analytics, no Yandex Metrica, no tag manager and no third-party script of any kind. The only cookie this site sets is cclang, which remembers the language you picked so you are not redirected by geolocation on your next visit. It contains one of three values: en, ru or zh.',
+          body: 'There is no Google Analytics and no tag manager. The site loads Yandex Metrika for first-party usage statistics — pageviews and the conversion goals on this site. The only cookie this site sets itself is cclang, which remembers the language you picked so you are not redirected by geolocation on your next visit. It contains one of three values: en, ru or zh.',
         },
         {
           title: 'What the server logs',
@@ -454,6 +526,143 @@ export const en = {
         },
       ],
       note: 'This tool is still being built. The converter and the cookie check are ready to use now.',
+    },
+
+    claudeCodeLogin: {
+      title: 'Claude Code keeps logging out: fixing “session expired, run /login”',
+      intro:
+        'Claude Code stops mid-task with “Your session has expired. Please run /login”, or it silently drops back to a login prompt every few hours. Here is what that message actually means and the fixes that work, in order.',
+      updated: '2026-09-14',
+      sections: [
+        {
+          title: 'What “session expired” actually means',
+          body:
+            'Claude Code does not use your password on every request. When you run /login it completes a browser sign-in and stores an OAuth token in ~/.claude/.credentials.json (or your OS keychain). That access token is short-lived and is refreshed in the background using a longer-lived refresh token.\n\n“Your session has expired. Please run /login” means the token Claude Code holds is dead and the background refresh was refused. It is not a bug in your code or your prompt — it is an authentication state that has to be re-established.',
+        },
+        {
+          title: 'The fix that works most of the time: /logout then /login',
+          body:
+            'Inside Claude Code, run /login and complete the browser sign-in. If that alone does not stick, run /logout first to discard the stale credentials, then /login again from a clean state. A clean logout-then-login cycle resolves the large majority of cases.\n\nIf the browser step opens but never completes, copy the authorization URL into a browser where you are already signed in to claude.ai, approve it, and paste the code back into the terminal.',
+        },
+        {
+          title: 'If it loops or comes back within hours',
+          body:
+            'When /login succeeds but you are logged out again soon after, the refresh itself is failing. Common causes: you changed your Anthropic password, you signed out of claude.ai (or “sign out of all sessions”) elsewhere, an admin or the account revoked sessions, the machine was asleep or offline past the refresh window, or the system clock is wrong — a clock that has drifted makes a valid token look expired.\n\nFix the underlying cause first: set the clock to sync automatically, and avoid signing out of every session on the web while Claude Code is running. Then do one clean /logout → /login.',
+        },
+        {
+          title: 'The ANTHROPIC_API_KEY trap',
+          body:
+            'The single most common cause of a login that “won’t stick” is an ANTHROPIC_API_KEY environment variable set in your shell profile. Claude Code will prefer the API key over your subscription login, and that pay-as-you-go key can be expired, rate-limited or scoped differently — which surfaces as auth errors even though your subscription is fine.\n\nCheck for it with `echo $ANTHROPIC_API_KEY` (macOS/Linux) or `echo %ANTHROPIC_API_KEY%` (Windows). If it is set and you meant to use your Pro/Max subscription, remove it from your shell profile (~/.zshrc, ~/.bashrc, or the Windows environment variables) and restart the terminal, then /login.',
+        },
+        {
+          title: 'Last resort: delete the credentials file',
+          body:
+            'If /logout → /login still loops, the stored credential is corrupt — a partially written ~/.claude/.credentials.json, or a macOS Keychain entry that is locked or not writable. Close Claude Code, delete ~/.claude/.credentials.json, reopen, and run /login to re-authenticate from scratch. On macOS you may also need to remove the “Claude Code” item from Keychain Access.\n\nThis file holds live credentials — treat it like a password file, and never paste its contents into a chat or a screenshot.',
+        },
+        {
+          title: 'Check whether your session is actually alive',
+          body:
+            'Before you spend time on fixes, it helps to know whether the underlying claude.ai session is still valid at all — the same account Claude Code signs into. Export your claude.ai session cookie and run it through the checker below: it tells you in seconds whether the session is live, which plan it is on, and how much of your 5-hour and weekly limits are left, so you can tell an expired session apart from a hit usage limit.',
+        },
+      ],
+      faqTitle: 'Claude Code login — questions',
+      faq: [
+        {
+          q: 'How long does a Claude Code login last?',
+          a: 'The refresh token behind /login is good for roughly 30 days of activity, but the access token it mints is short-lived and refreshes in the background. In practice you should only have to run /login again every few weeks — if it is every few hours, something is blocking the refresh (see the ANTHROPIC_API_KEY and clock causes above).',
+        },
+        {
+          q: 'Does reinstalling Claude Code fix the login?',
+          a: 'Rarely — reinstalling does not clear ~/.claude/.credentials.json, so a corrupt credential survives. Deleting that file (or the keychain entry) and running /login is the targeted fix; reinstalling is only needed if the binary itself is broken.',
+        },
+        {
+          q: 'Is my subscription being charged when this happens?',
+          a: 'No. A session/login error does not consume usage or money. But if an ANTHROPIC_API_KEY is set, Claude Code may be billing that API key per token instead of using your subscription — which is a reason to remove it if you intended to use Pro or Max.',
+        },
+        {
+          q: 'API key or subscription login — which should I use?',
+          a: 'For interactive coding on a Pro/Max plan, use the subscription login (/login) and make sure ANTHROPIC_API_KEY is unset. Use an API key only for automation or CI where you want metered pay-as-you-go billing and no browser step.',
+        },
+        {
+          q: 'Why does Claude Code log out after sleep or on a VPN?',
+          a: 'A machine asleep or offline past the refresh window lets the token lapse, and a VPN or proxy can make the refresh call fail or look like a new location. Reconnect, make sure the clock is correct, and run /login once from a stable connection.',
+        },
+      ],
+      sourcesTitle: 'Sources',
+      sources: [
+        { label: 'Claude Code — Error reference (code.claude.com/docs)', url: 'https://code.claude.com/docs/en/errors' },
+        { label: 'Anthropic Help Center — signing in to Claude Code', url: 'https://support.anthropic.com/' },
+      ],
+      ctaTitle: 'Is your Claude session still alive?',
+      ctaBody:
+        'Paste your claude.ai session cookie and see in seconds whether it is valid, the plan, and your remaining 5-hour and weekly usage.',
+      ctaLabel: 'Check your cookie',
+    },
+
+    claudeUsage: {
+      title: 'Claude 5-hour limit vs weekly usage, and when they reset',
+      intro:
+        'Claude Pro and Max cap usage with two separate windows, and hitting “Claude usage limit reached” with no clear reason is one of the most common frustrations. Here is exactly how the two limits work, why one pool drains faster than you expect, and when each resets.',
+      updated: '2026-09-14',
+      sections: [
+        {
+          title: 'Two limits: a rolling 5-hour window and a fixed weekly window',
+          body:
+            'Every paid Claude plan meters usage two ways at once. The 5-hour window is a rolling session limit: it starts with your first message and caps how much you can send over the next five hours. The weekly window is a separate, larger cap over a seven-day period.\n\nYou can hit either one. Running into the 5-hour cap pauses you for a few hours; running into the weekly cap pauses you until the week resets, and a five-hour wait will not bring it back.',
+        },
+        {
+          title: 'It is one shared pool across claude.ai, Claude Code and Desktop',
+          body:
+            'The single most surprising thing: usage is not counted per app. Messages in the claude.ai web app, in Claude Code, and in the Claude desktop app all draw from the same limit. A heavy Claude Code session in the morning can leave you rate-limited in the web app in the afternoon.\n\nModel choice matters too — Opus-class models consume the pool far faster than smaller ones, which is why Max users on the biggest model can hit limits that Pro users rarely see.',
+        },
+        {
+          title: 'When does it reset?',
+          body:
+            'The 5-hour window resets five hours after the first message that opened it — it rolls, so it is always “five hours from when you started”, not a fixed clock time.\n\nThe weekly window resets on a fixed schedule tied to your account, not rolling. The exact day and time are shown in Settings → Usage on claude.ai (for example “Sat 12:30 AM”); it is account-specific, so there is no single universal reset time. If you hit the weekly cap, that fixed reset is the only thing that restores it.',
+        },
+        {
+          title: 'Pro, Max 5× and Max 20×',
+          body:
+            'The plans differ mainly in how large those windows are. Pro ($20/mo) is sized for everyday chat and light coding. Max at 5× and 20× multiply the caps for heavy Claude Code use. Because everything shares one pool, the practical question is not “which app” but “how much total, on which model” — the /cost command in Claude Code shows what the current session has spent.',
+        },
+        {
+          title: 'See your own usage right now',
+          body:
+            'The numbers that matter are your own, and you do not have to open claude.ai to read them. Export your claude.ai session cookie and run it through the checker below — it reports your plan and exactly how much of the 5-hour and weekly windows you have used, and when each resets. That is the fastest way to tell whether you are actually rate-limited or just hit a transient error.',
+        },
+      ],
+      faqTitle: 'Claude usage limits — questions',
+      faq: [
+        {
+          q: 'Why did I hit the weekly limit so fast?',
+          a: 'Almost always because the weekly pool is shared across claude.ai, Claude Code and Desktop, and a large-model (Opus-class) Claude Code session burns it quickly. Check what is spending it with /cost in Claude Code, and consider a smaller model for routine work.',
+        },
+        {
+          q: 'Does switching to a smaller model help?',
+          a: 'Yes. Smaller/faster models consume the shared pool much more slowly than the largest model, so switching for routine edits meaningfully extends how far your 5-hour and weekly windows stretch.',
+        },
+        {
+          q: 'Does the API have the same limits?',
+          a: 'No. The 5-hour and weekly windows apply to the Pro/Max subscription. The API is metered separately as pay-as-you-go by tokens — which is also why an ANTHROPIC_API_KEY set in your shell can quietly bill you instead of using your subscription.',
+        },
+        {
+          q: 'Can I check my usage without opening claude.ai?',
+          a: 'Yes — paste your session cookie into the checker on this site and it reports your plan and both usage windows. It reads the same numbers claude.ai shows in Settings → Usage.',
+        },
+        {
+          q: 'What is the difference between the 5-hour and weekly reset?',
+          a: 'The 5-hour window rolls (five hours after your first message); the weekly window is fixed to a day and time on your account, shown in Settings → Usage. Hitting the weekly cap can only be cleared by that fixed weekly reset.',
+        },
+      ],
+      sourcesTitle: 'Sources',
+      sources: [
+        { label: 'Anthropic Help Center — usage limits', url: 'https://support.anthropic.com/' },
+        { label: 'Claude Code — usage & the /cost command (code.claude.com/docs)', url: 'https://code.claude.com/docs/en/costs' },
+      ],
+      ctaTitle: 'How much of your limit is left?',
+      ctaBody:
+        'Paste your claude.ai session cookie and read your plan plus exactly how much of the 5-hour and weekly windows you have used, and when they reset.',
+      ctaLabel: 'Check your usage',
     },
   },
 }

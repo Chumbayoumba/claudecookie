@@ -4,6 +4,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useState, type FormEvent } from 'react'
 import { UsageCard } from './UsageCard'
 import { sealJson } from '@/lib/box'
+import { splitCookieSets } from '@/lib/cookies/split'
+import { metrikaGoal } from '@/lib/analytics'
 import type { CheckResult, InvalidReason } from '@/lib/check/types'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
@@ -29,13 +31,14 @@ function reasonText(dict: Dictionary, reason?: string): string {
 export function Checker({ locale, dict }: CheckerProps) {
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<CheckResult | null>(null)
+  const [results, setResults] = useState<CheckResult[] | null>(null)
   const [failed, setFailed] = useState(false)
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setFailed(false)
     setBusy(true)
+    metrikaGoal('check_started')
     try {
       let tz: string | undefined
       try {
@@ -43,17 +46,40 @@ export function Checker({ locale, dict }: CheckerProps) {
       } catch {
         tz = undefined
       }
-      const box = await sealJson({ cookie: value, l: locale, tz })
-      const response = await fetch('/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(box),
-      })
-      const data = (await response.json()) as CheckResult
-      setResult(data)
+      // A paste of several separate cookies is split and checked as a batch;
+      // a single cookie keeps the original single-object request/response.
+      const sets = splitCookieSets(value)
+      let out: CheckResult[]
+      if (sets.length > 1) {
+        const box = await sealJson({ cookies: sets, l: locale, tz })
+        const response = await fetch('/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(box),
+        })
+        const data = (await response.json()) as { results?: CheckResult[] }
+        out = Array.isArray(data.results) ? data.results : []
+      } else {
+        const box = await sealJson({ cookie: value, l: locale, tz })
+        const response = await fetch('/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(box),
+        })
+        out = [(await response.json()) as CheckResult]
+      }
+      if (out.length === 0) {
+        setResults(null)
+        setFailed(true)
+        metrikaGoal('check_failed')
+      } else {
+        setResults(out)
+        metrikaGoal(out.every((r) => r.ok) ? 'check_valid' : 'check_invalid')
+      }
     } catch {
-      setResult(null)
+      setResults(null)
       setFailed(true)
+      metrikaGoal('check_failed')
     } finally {
       setBusy(false)
     }
@@ -97,10 +123,10 @@ export function Checker({ locale, dict }: CheckerProps) {
           <Button
             type="button"
             variant="ghost"
-            disabled={!value && !result}
+            disabled={!value && !results}
             onClick={() => {
               setValue('')
-              setResult(null)
+              setResults(null)
               setFailed(false)
             }}
           >
@@ -125,15 +151,33 @@ export function Checker({ locale, dict }: CheckerProps) {
       </AnimatePresence>
 
       <AnimatePresence initial={false} mode="wait">
-        {result ? (
+        {results ? (
           <motion.div
-            key={result.ok ? 'valid' : `invalid-${result.invalidReason ?? 'x'}`}
+            key={`n${results.length}-${results[0]?.ok ? 'v' : 'x'}`}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.35, ease: EASE }}
+            className="flex flex-col gap-4"
           >
-            <CheckReport result={result} dict={dict} />
+            {results.length > 1 ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-sans text-detail-s text-ink-secondary">
+                <span>
+                  {dict.check.batchHeading}: <b className="text-ink">{results.length}</b>
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-ok">
+                  <MarkOk />
+                  {results.filter((r) => r.ok).length}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-error">
+                  <MarkBad />
+                  {results.filter((r) => !r.ok).length}
+                </span>
+              </div>
+            ) : null}
+            {results.map((r, i) => (
+              <CheckReport key={i} result={r} dict={dict} />
+            ))}
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -204,6 +248,36 @@ function CheckIcon() {
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** Custom count marks (no emoji): a ringed check and a ringed cross in currentColor. */
+function MarkOk() {
+  return (
+    <svg viewBox="0 0 16 16" className="size-4 shrink-0" fill="none" aria-hidden>
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3" opacity="0.35" />
+      <path
+        d="m5 8.2 2.1 2.1L11 6.2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function MarkBad() {
+  return (
+    <svg viewBox="0 0 16 16" className="size-4 shrink-0" fill="none" aria-hidden>
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3" opacity="0.35" />
+      <path
+        d="m5.8 5.8 4.4 4.4M10.2 5.8 5.8 10.2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
       />
     </svg>
   )

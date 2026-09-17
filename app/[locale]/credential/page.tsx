@@ -23,12 +23,20 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!isLocale(raw)) return {}
   const dict = getDictionary(raw)
 
-  return buildMetadata({
-    locale: raw,
-    path: PATH,
-    title: dict.meta.credential.title,
-    description: dict.meta.credential.description,
-  })
+  return {
+    // Thin placeholder for an unshipped feature: noindex until it has real
+    // content, so it does not drag down site quality or attract a credential-
+    // tooling review. Kept follow + linked from the footer so users still find
+    // it, and removed from app/sitemap.ts.
+    ...buildMetadata({
+      locale: raw,
+      path: PATH,
+      title: dict.meta.credential.title,
+      description: dict.meta.credential.description,
+      includeHreflang: false,
+    }),
+    robots: { index: false, follow: true },
+  }
 }
 
 export default async function CredentialPage({ params }: PageProps) {

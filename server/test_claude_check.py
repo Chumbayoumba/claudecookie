@@ -81,6 +81,20 @@ class ExtractTests(unittest.TestCase):
             cc.extract_fields("foo=bar; baz=1")
         self.assertEqual(str(ctx.exception), "missing_session")
 
+    def test_cookie_oneline_flattens_netscape(self) -> None:
+        line = cc.cookie_oneline(NETSCAPE)
+        self.assertNotIn("\n", line)
+        self.assertIn("sessionKey=sk-ant-sid02-TESTONLY", line)
+        self.assertIn("lastActiveOrg=org-aaa", line)
+        self.assertIn("routingHint=rh-test", line)
+
+    def test_cookie_oneline_keeps_non_claude(self) -> None:
+        self.assertEqual(cc.cookie_oneline("foo=bar;\nbaz=1"), "foo=bar; baz=1")
+        self.assertEqual(
+            cc.cookie_oneline('[{"name":"other","value":"x"}]'),
+            '[{"name":"other","value":"x"}]',
+        )
+
     def test_cookie_editor_json(self) -> None:
         # Cookie-Editor / EditThisCookie style: full cookie objects.
         text = """[
@@ -459,6 +473,40 @@ class GeoCountryTests(unittest.TestCase):
     def test_resolve_unknown_uses_neutral(self) -> None:
         self.assertEqual(cc.resolve_country("Mars/Phobos", None), "us")
         self.assertEqual(cc.resolve_country(None, None), "us")
+
+
+class SplitCookieSetsTest(unittest.TestCase):
+    CE = '[{"name":"sessionKey","value":"a","expirationDate":1,"domain":".claude.ai"}]'
+    HDR = "sessionKey=aaa; lastActiveOrg=x"
+
+    def test_empty(self) -> None:
+        self.assertEqual(cc.split_cookie_sets(""), [])
+        self.assertEqual(cc.split_cookie_sets("  \n "), [])
+
+    def test_single_stays_one(self) -> None:
+        self.assertEqual(len(cc.split_cookie_sets(self.CE)), 1)
+        self.assertEqual(len(cc.split_cookie_sets(NETSCAPE)), 1)
+        self.assertEqual(len(cc.split_cookie_sets(self.HDR)), 1)
+
+    def test_concatenated_json(self) -> None:
+        self.assertEqual(len(cc.split_cookie_sets(self.CE + "\n" + self.CE)), 2)
+        self.assertEqual(len(cc.split_cookie_sets(self.CE + self.CE)), 2)
+
+    def test_repeated_netscape_header(self) -> None:
+        self.assertEqual(len(cc.split_cookie_sets(NETSCAPE + "\n\n" + NETSCAPE)), 2)
+
+    def test_header_lines(self) -> None:
+        self.assertEqual(len(cc.split_cookie_sets(self.HDR + "\n" + self.HDR + "\n" + self.HDR)), 3)
+
+    def test_cap(self) -> None:
+        many = "\n".join([self.HDR] * 30)
+        self.assertEqual(len(cc.split_cookie_sets(many)), cc.MAX_SETS)
+
+    def test_each_set_is_checkable(self) -> None:
+        # Every split of a two-set paste extracts a session — proves the boundaries are clean.
+        sets = cc.split_cookie_sets(self.CE + "\n" + self.CE)
+        for s in sets:
+            self.assertIn("sessionKey", cc.extract_fields(s))
 
 
 if __name__ == "__main__":

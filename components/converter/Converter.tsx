@@ -10,13 +10,16 @@ import { SwapButton } from './SwapButton'
 import { Button } from '@/components/ui/Button'
 import {
   convert,
+  convertBatch,
+  convertCombined,
   detectFormat,
   oppositeFormat,
+  splitCookieSets,
   type CookieFormat,
   type ParseIssue,
 } from '@/lib/cookies'
-import { sampleFor } from '@/lib/cookies/samples'
-import { trackConvert } from '@/lib/analytics'
+import { isSiteSample, sampleFor } from '@/lib/cookies/samples'
+import { metrikaGoal, trackConvert } from '@/lib/analytics'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { cn } from '@/lib/utils/cn'
@@ -37,6 +40,9 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
   const [defaultDomain, setDefaultDomain] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
   const [flashKey, setFlashKey] = useState(0)
+  // Batch: when the paste holds several separate cookie sets, convert each; the
+  // "combine" toggle merges them all into one output instead.
+  const [combine, setCombine] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setCommitted(input), DEBOUNCE_MS)
@@ -53,9 +59,32 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
     [committed, effectiveTarget, defaultDomain],
   )
 
+  const sets = useMemo(() => splitCookieSets(committed), [committed])
+  const isBatch = sets.length > 1
+  const batchResults = useMemo(
+    () =>
+      isBatch
+        ? convertBatch(committed, { target: effectiveTarget, defaultDomain: defaultDomain.trim() })
+        : [],
+    [committed, effectiveTarget, defaultDomain, isBatch],
+  )
+  const combinedResult = useMemo(
+    () =>
+      isBatch && combine
+        ? convertCombined(committed, {
+            target: effectiveTarget,
+            defaultDomain: defaultDomain.trim(),
+          })
+        : null,
+    [committed, effectiveTarget, defaultDomain, isBatch, combine],
+  )
+
+  // In batch mode the single `result` is the whole multi-set paste, which does not
+  // parse as one format — so its issues are meaningless; per-set outputs stand alone.
+  const baseIssues: ParseIssue[] = isBatch ? [] : result.issues
   const issues: ParseIssue[] = fileError
-    ? [{ level: 'error', message: fileError }, ...result.issues]
-    : result.issues
+    ? [{ level: 'error', message: fileError }, ...baseIssues]
+    : baseIssues
 
   const needsDomain =
     (detection.format !== null && DOMAINLESS.includes(detection.format)) ||
@@ -111,50 +140,118 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
   // effective target, so it fires once per conversion, not on every keystroke;
   // trackConvert additionally de-dupes identical events within a short window.
   useEffect(() => {
-    if (result.ok && result.output && result.detected) {
-      trackConvert({
-        from: result.detected,
-        to: result.target,
-        n: result.stats.total,
-        out: result.output,
-        locale,
-      })
+    const done = isBatch ? batchResults : [result]
+    let any = false
+    for (const r of done) {
+      if (r.ok && r.output && r.detected && !isSiteSample(r.output)) {
+        trackConvert({ from: r.detected, to: r.target, n: r.stats.total, out: r.output, locale })
+        any = true
+      }
     }
+    if (any) metrikaGoal('convert_success')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [committed, effectiveTarget])
+  }, [committed, effectiveTarget, combine])
 
   const isDirty = input !== committed
   const hasInput = input.trim().length > 0
 
   return (
     <div className="relative z-10">
-      <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:gap-4">
-        <InputPanel
-          value={input}
-          onChange={handleInput}
-          onSample={handleSample}
-          onFileError={setFileError}
-          detected={detection.format}
-          confidence={detection.confidence}
-          dict={dict}
-        />
+      {!isBatch ? (
+        <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:gap-4">
+          <InputPanel
+            value={input}
+            onChange={handleInput}
+            onSample={handleSample}
+            onFileError={setFileError}
+            detected={detection.format}
+            confidence={detection.confidence}
+            dict={dict}
+          />
 
-        <div className="flex shrink-0 items-center justify-center lg:pt-16">
-          <SwapButton
-            onSwap={handleSwap}
-            disabled={!result.ok || !result.output}
-            label={dict.converter.swap}
+          <div className="flex shrink-0 items-center justify-center lg:pt-16">
+            <SwapButton
+              onSwap={handleSwap}
+              disabled={!result.ok || !result.output}
+              label={dict.converter.swap}
+            />
+          </div>
+
+          <OutputPanel
+            output={result.output}
+            target={effectiveTarget}
+            onTargetChange={setTarget}
+            flashKey={flashKey}
+            dict={dict}
           />
         </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <InputPanel
+            value={input}
+            onChange={handleInput}
+            onSample={handleSample}
+            onFileError={setFileError}
+            detected={detection.format}
+            confidence={detection.confidence}
+            dict={dict}
+          />
 
-        <OutputPanel
-          output={result.output}
-          target={effectiveTarget}
-          onTargetChange={setTarget}
-          flashKey={flashKey}
-          dict={dict}
-        />
-      </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-main border border-line bg-bg-secondary px-4 py-2.5">
+            <span className="font-sans text-detail-s text-ink-secondary">
+              <b>{sets.length}</b> {dict.converter.batchSets}
+            </span>
+            <div className="flex gap-1 rounded-main bg-surface p-0.5">
+              {[
+                { on: false, label: dict.converter.separate },
+                { on: true, label: dict.converter.combine },
+              ].map((opt) => (
+                <button
+                  key={String(opt.on)}
+                  type="button"
+                  onClick={() => setCombine(opt.on)}
+                  className={cn(
+                    'rounded-main px-3 py-1.5 font-sans text-detail-s transition-colors duration-150 ease-ant',
+                    combine === opt.on
+                      ? 'bg-clay text-clay-contrast'
+                      : 'text-ink-secondary hover:text-ink',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {combine && combinedResult ? (
+            <OutputPanel
+              output={combinedResult.output}
+              target={effectiveTarget}
+              onTargetChange={setTarget}
+              flashKey={flashKey}
+              dict={dict}
+            />
+          ) : (
+            <div className="flex flex-col gap-4">
+              {batchResults.map((r, i) => (
+                <div key={i}>
+                  <p className="mb-1.5 font-sans text-detail-xs text-ink-faint">
+                    {dict.converter.setWord} {i + 1}
+                    {r.detected ? ` · ${r.detected}` : ''}
+                  </p>
+                  <OutputPanel
+                    output={r.output}
+                    target={effectiveTarget}
+                    onTargetChange={setTarget}
+                    flashKey={flashKey}
+                    dict={dict}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button
@@ -214,7 +311,7 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
       )}
 
       <IssueList issues={issues} dict={dict} />
-      <StatsBar stats={result.stats} visible={result.ok} locale={locale} dict={dict} />
+      <StatsBar stats={result.stats} visible={result.ok && !isBatch} locale={locale} dict={dict} />
     </div>
   )
 }

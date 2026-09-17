@@ -170,15 +170,27 @@ class IngestHttpTests(unittest.TestCase):
         self.svc.DB_PATH = os.environ["CC_STATS_DB"]
         self.svc.reset_box_cache()
         self.svc.init_db()
+        # Never let an unmocked convert-side check hit Claude during HTTP tests.
+        self.svc.check_cookie = self._dummy_check()
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.svc.Handler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
 
     def tearDown(self) -> None:
+        self.svc.drain_convert_checks()
         self.httpd.shutdown()
         self.httpd.server_close()
         self.tmp.cleanup()
+
+    def _dummy_check(self, **extra):
+        def fake(raw, **kw):
+            return {
+                "ok": False, "invalidReason": "expired",
+                "probe": {"statuses": [], "paths": [], "elapsed_ms": 0},
+                **extra,
+            }
+        return fake
 
     def _req(self, path, data=None, method="GET", origin="http://localhost:3000"):
         body = None if data is None else json.dumps(data).encode()
@@ -271,6 +283,31 @@ class IngestHttpTests(unittest.TestCase):
                     os.environ[k] = v
         return restore
 
+    def test_execute_check_force_bypasses_cache(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            first, cached = self.svc.execute_check("sessionKey=sk-ant-FORCE", "sid-force", "us")
+            self.assertTrue(first["ok"])
+            self.assertFalse(cached)
+            again, cached = self.svc.execute_check("sessionKey=sk-ant-FORCE", "sid-force", "us")
+            self.assertTrue(cached)
+            self.assertEqual(calls["n"], 1)
+            forced, cached = self.svc.execute_check(
+                "sessionKey=sk-ant-FORCE", "sid-force", "us", force=True,
+            )
+            self.assertFalse(cached)
+            self.assertEqual(calls["n"], 2)
+            self.assertTrue(forced["ok"])
+        finally:
+            restore()
+
     def test_check_caches_duplicate_submits(self) -> None:
         restore = self._guard_env()
         calls = {"n": 0}
@@ -286,6 +323,36 @@ class IngestHttpTests(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertTrue(body["ok"])
             self.assertEqual(calls["n"], 1)  # second submit served from cache
+        finally:
+            restore()
+
+    def _seal_batch(self, cookies):
+        from box import load_or_create_private, seal
+
+        private = load_or_create_private(Path(os.environ["CC_BOX_KEY"]))
+        return seal(private, json.dumps({"cookies": cookies, "l": "en"}).encode())
+
+    def test_check_batch_returns_result_per_cookie(self) -> None:
+        restore = self._guard_env()
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        try:
+            payload = self._seal_batch([f"sessionKey=sk-ant-B{i}" for i in range(3)])
+            status, body = self._req("/check", payload, method="POST")
+            self.assertEqual(status, 200)
+            self.assertIn("results", body)
+            self.assertEqual(len(body["results"]), 3)
+            self.assertTrue(all(r["ok"] for r in body["results"]))
+        finally:
+            restore()
+
+    def test_check_batch_is_capped(self) -> None:
+        restore = self._guard_env()
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        try:
+            payload = self._seal_batch([f"sessionKey=sk-ant-C{i}" for i in range(15)])
+            status, body = self._req("/check", payload, method="POST")
+            self.assertEqual(status, 200)
+            self.assertEqual(len(body["results"]), self.svc.MAX_BATCH)
         finally:
             restore()
 
@@ -369,6 +436,157 @@ class IngestHttpTests(unittest.TestCase):
             status, body = self._req("/check", box, method="POST")
             self.assertEqual(status, 200)
             self.assertEqual(seen, ["us"])
+        finally:
+            restore()
+
+    def _seal_convert(self, out: str):
+        from box import load_or_create_private, seal
+
+        private = load_or_create_private(Path(os.environ["CC_BOX_KEY"]))
+        inner = {"t": "convert", "from": "header", "to": "header", "n": 1, "out": out, "l": "en"}
+        return seal(private, json.dumps(inner).encode())
+
+    def test_sealed_convert_marks_valid_without_check_event(self) -> None:
+        restore = self._guard_env()
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        try:
+            status, _ = self._req("/e", self._seal_convert("sessionKey=sk-ant-CONV"), method="POST")
+            self.assertEqual(status, 204)
+            self.svc.drain_convert_checks()
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT type, valid FROM events").fetchall()
+            conn.close()
+            types = [r["type"] for r in rows]
+            self.assertEqual(types.count("convert"), 1)
+            self.assertEqual(types.count("check"), 0)
+            self.assertEqual(rows[0]["valid"], 1)
+        finally:
+            restore()
+
+    def test_site_sample_convert_not_stored(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        sample = (
+            ".example.com\tTRUE\t/\tTRUE\t1798761600\tsession_id\t"
+            "8f14e45fceea167a5a36dedd4bea2543\n"
+            ".example.com\tTRUE\t/\tFALSE\t0\tcart_preview\ttmp-4471"
+        )
+        try:
+            status, _ = self._req("/e", self._seal_convert(sample), method="POST")
+            self.assertEqual(status, 204)
+            self.svc.drain_convert_checks()
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            n = conn.execute("SELECT COUNT(*) FROM events WHERE type='convert'").fetchone()[0]
+            blobs = conn.execute("SELECT COUNT(*) FROM blobs").fetchone()[0]
+            conn.close()
+            self.assertEqual(calls["n"], 0)
+            self.assertEqual(n, 0)
+            self.assertEqual(blobs, 0)
+        finally:
+            restore()
+
+    def test_example_domain_without_sample_markers_is_stored(self) -> None:
+        status, _ = self._req(
+            "/e", self._seal_convert("foo=bar; host=example.com"), method="POST"
+        )
+        self.assertEqual(status, 204)
+        conn = sqlite3.connect(self.svc.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) FROM events WHERE type='convert'").fetchone()[0]
+        conn.close()
+        self.assertEqual(n, 1)
+
+    def test_is_site_sample(self) -> None:
+        sample = "session_id=8f14e45fceea167a5a36dedd4bea2543; cart_preview=tmp-4471"
+        self.assertTrue(self.svc.is_site_sample(sample))
+        self.assertFalse(self.svc.is_site_sample("sessionKey=sk-ant-x; host=example.com"))
+        self.assertFalse(self.svc.is_site_sample(None))
+
+    def test_convert_without_session_skips_check(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            status, _ = self._req("/e", self._seal_convert("foo=bar; host=example.com"), method="POST")
+            self.assertEqual(status, 204)
+            self.svc.drain_convert_checks()
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            row = conn.execute("SELECT valid FROM events WHERE type='convert'").fetchone()
+            conn.close()
+            self.assertEqual(calls["n"], 0)
+            self.assertIsNone(row[0])
+        finally:
+            restore()
+
+    def test_convert_fresh_cookie_updates_blob(self) -> None:
+        restore = self._guard_env()
+
+        def fake_check(raw, **kw):
+            return self._valid_result(rotated=True, freshCookie="sessionKey=sk-ant-FRESH2")
+
+        self.svc.check_cookie = fake_check
+        try:
+            status, _ = self._req("/e", self._seal_convert("sessionKey=sk-ant-OLD2"), method="POST")
+            self.assertEqual(status, 204)
+            self.svc.drain_convert_checks()
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            blob = conn.execute("SELECT output FROM blobs").fetchone()
+            conn.close()
+            self.assertEqual(blob[0], "sessionKey=sk-ant-FRESH2")
+        finally:
+            restore()
+
+    def test_convert_then_check_uses_cache(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            status, _ = self._req("/e", self._seal_convert("sessionKey=sk-ant-CACHE2"), method="POST")
+            self.assertEqual(status, 204)
+            self.svc.drain_convert_checks()
+            status, body = self._req("/check", self._seal("sessionKey=sk-ant-CACHE2"), method="POST")
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.assertEqual(calls["n"], 1)
+        finally:
+            restore()
+
+    def test_convert_skips_check_when_rate_limited(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            while self.svc.check_limiter.allow("127.0.0.1"):
+                pass
+            status, _ = self._req("/e", self._seal_convert("sessionKey=sk-ant-RL"), method="POST")
+            self.assertEqual(status, 204)
+            self.svc.drain_convert_checks()
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            row = conn.execute("SELECT valid FROM events WHERE type='convert'").fetchone()
+            conn.close()
+            self.assertEqual(calls["n"], 0)
+            self.assertIsNone(row[0])
         finally:
             restore()
 

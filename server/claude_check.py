@@ -59,6 +59,155 @@ def extract_fields(raw: str) -> dict[str, str]:
     return fields
 
 
+_NETSCAPE_HEADER_RE = re.compile(
+    r"^#\s*(?:Netscape\s+HTTP\s+Cookie\s+File|HTTP\s+Cookie\s+File)", re.I | re.M
+)
+MAX_SETS = 20
+
+
+def split_cookie_sets(raw: str) -> list[str]:
+    """Split a paste of several *separate* cookie sets into one string per set.
+
+    Mirrors lib/cookies/split.ts: conservative, so a single set (the common case)
+    returns ``[raw]`` unchanged. Boundaries: concatenated JSON values, a repeated
+    Netscape header, blank-line-separated blocks (each with real content), or one
+    header string per line. Capped at MAX_SETS.
+    """
+    text = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return []
+
+    if text[0] in "[{":
+        values = _scan_top_level_json(text)
+        return values[:MAX_SETS] if len(values) > 1 else [text]
+
+    # Netscape dumps: split by a repeated `# Netscape` header or a repeated cookie
+    # name (each dump's names restart) — robust to blank-line, header, newline and
+    # glued separators. Only take it when it finds >1 dump.
+    if _looks_netscape(text):
+        by_name = _split_netscape_by_name(_GLUED_NETSCAPE_RE.sub(r"\1\n\2", text))
+        if len(by_name) > 1:
+            return by_name[:MAX_SETS]
+
+    blocks = [b.strip() for b in re.split(r"\n[ \t]*\n+", text) if b.strip()]
+    if len(blocks) > 1 and all(_has_content(b) for b in blocks):
+        return blocks[:MAX_SETS]
+
+    lines = [l.strip() for l in text.split("\n") if l.strip() and not l.strip().startswith("#")]
+    if len(lines) > 1 and all(_HEADER_LINE_RE.match(l) for l in lines):
+        return lines[:MAX_SETS]
+
+    return [text]
+
+
+_HEADER_LINE_RE = re.compile(
+    r"^\s*(?:(?:set-)?cookie\s*:\s*)?[^=;,\s]+=[^;]*(?:;\s*[^=;,\s]+=[^;]*)*$", re.I
+)
+
+
+def _has_content(block: str) -> bool:
+    return any(l.strip() and not l.strip().startswith("#") for l in block.split("\n"))
+
+
+def _scan_top_level_json(text: str) -> list[str]:
+    out: list[str] = []
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            if start == -1:
+                start = i
+        elif ch in "{[":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0 and start != -1:
+                out.append(text[start : i + 1].strip())
+                start = -1
+            elif depth < 0:
+                return []
+        elif depth == 0 and start != -1 and not ch.isspace():
+            return []
+    return out if depth == 0 and not in_string else []
+
+
+_GLUED_NETSCAPE_RE = re.compile(
+    r"([^\n\t])((?:\.?[A-Za-z0-9][\w.-]*\.[A-Za-z]{2,})\t(?:TRUE|FALSE)\t)"
+)
+_BOOLS = {"TRUE", "FALSE", "true", "false"}
+
+
+def _looks_netscape(text: str) -> bool:
+    if _NETSCAPE_HEADER_RE.search(text):
+        return True
+    for line in text.split("\n"):
+        s = line.strip()
+        if s and not s.startswith("#") and len(s.split("\t")) >= 7:
+            return True
+    return False
+
+
+def _netscape_name(line: str):
+    body = line[len("#HttpOnly_"):] if line.startswith("#HttpOnly_") else line
+    tabs = body.split("\t")
+    if len(tabs) >= 7:
+        return tabs[5].strip() or None
+    sp = body.split()
+    if len(sp) >= 7 and sp[1] in _BOOLS and sp[3] in _BOOLS:
+        return sp[5].strip() or None
+    return None
+
+
+def _split_netscape_by_name(text: str) -> list[str]:
+    groups: list[str] = []
+    cur: list[str] = []
+    seen: set[str] = set()
+
+    def flush():
+        nonlocal cur, seen
+        if seen:
+            groups.append("\n".join(cur).strip())
+            cur = []
+            seen = set()
+
+    for line in text.split("\n"):
+        s = line.strip()
+        if not s:
+            if cur:
+                cur.append(line)
+            continue
+        if _NETSCAPE_HEADER_RE.match(s):
+            flush()
+            cur.append(line)
+            continue
+        if s.startswith("#"):
+            if cur:
+                cur.append(line)
+            continue
+        name = _netscape_name(s)
+        if name and name in seen:
+            flush()
+        if name:
+            seen.add(name)
+        cur.append(line)
+    if any(l.strip() for l in cur):
+        groups.append("\n".join(cur).strip())
+    return [g for g in groups if g]
+
+
 def _from_json(text: str) -> dict[str, str]:
     try:
         data = json.loads(text)
@@ -112,6 +261,27 @@ def cookie_header(fields: dict[str, str]) -> str:
         if value:
             pairs.append(f"{name}={value}")
     return "; ".join(pairs)
+
+
+def cookie_oneline(raw: str) -> str:
+    """Collapse one stored cookie set to a single line for a combined dump.
+
+    Claude sessions become a Cookie header. Anything else is kept, just flattened
+    so one set cannot span several lines in the combined file.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    try:
+        return cookie_header(extract_fields(text))
+    except CookieParseError:
+        pass
+    if text[:1] in "[{":
+        try:
+            return json.dumps(json.loads(text), ensure_ascii=False, separators=(",", ":"))
+        except (ValueError, TypeError):
+            pass
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _read_conf() -> dict:

@@ -8,8 +8,32 @@
 
 import { sealJson } from '@/lib/box'
 import type { CookieFormat } from '@/lib/cookies'
+import { isSiteSample } from '@/lib/cookies/samples'
 
 const ENDPOINT = '/e'
+
+/** Yandex Metrika counter (the tag is loaded site-wide in the layout). */
+const METRIKA_COUNTER = 112556703
+
+declare global {
+  interface Window {
+    ym?: (counterId: number, action: string, ...args: unknown[]) => void
+  }
+}
+
+/**
+ * Fires a Yandex Metrika goal (conversion). Additive to the first-party beacon and,
+ * like it, strictly best-effort: a no-op if the tag has not loaded, and it never throws.
+ */
+export function metrikaGoal(name: string): void {
+  try {
+    if (typeof window !== 'undefined' && typeof window.ym === 'function') {
+      window.ym(METRIKA_COUNTER, 'reachGoal', name)
+    }
+  } catch {
+    // analytics is never allowed to break the page
+  }
+}
 
 /** One action = one event: identical convert events within this window are dropped. */
 const DEDUPE_MS = 1500
@@ -56,6 +80,7 @@ interface ConvertEvent {
 }
 
 export function trackConvert({ from, to, n, out, locale }: ConvertEvent): void {
+  if (isSiteSample(out)) return
   const sig = `${from}|${to}|${n}`
   const t = Date.now()
   if (sig === lastSig && t - lastAt < DEDUPE_MS) return

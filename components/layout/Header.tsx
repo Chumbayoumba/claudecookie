@@ -51,10 +51,15 @@ export function Header({ locale, dict }: HeaderProps) {
     }
   }, [menuOpen])
 
+  // The two /formats/ reference pages carry the site's informational keywords
+  // and previously had inbound links from the footer only; putting them in the
+  // primary nav is the strongest internal-link fix. /credential is a
+  // placeholder (now noindexed) and lives in the footer only.
   const links = [
     { href: localePath(locale, '/'), label: dict.nav.converter },
     { href: localePath(locale, '/check'), label: dict.nav.check },
-    { href: localePath(locale, '/credential'), label: dict.nav.getCredential },
+    { href: localePath(locale, '/formats/netscape-cookies-txt'), label: dict.nav.netscapeFormat },
+    { href: localePath(locale, '/formats/json-cookies'), label: dict.nav.jsonFormat },
     { href: localePath(locale, '/privacy'), label: dict.nav.privacy },
   ]
 

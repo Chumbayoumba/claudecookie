@@ -12,9 +12,13 @@ const EASE = [0.165, 0.84, 0.44, 1] as const
  * deliberate, short enough that the tool below is never waiting on it.
  */
 export function Hero({ dict }: { dict: Dictionary }) {
+  // Transform-only rise (no opacity): the headline is the LCP element and part
+  // of the indexable body, so it must never ship at opacity:0 in the static
+  // HTML - a crawler that does not run the JS would see a blank hero. Animating
+  // only `y` keeps the "settling" motion while leaving the text visible.
   const rise = (delay: number) => ({
-    initial: { opacity: 0, y: 14 },
-    animate: { opacity: 1, y: 0 },
+    initial: { y: 14 },
+    animate: { y: 0 },
     transition: { duration: 0.55, delay, ease: EASE },
   })
 

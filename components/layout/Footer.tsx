@@ -16,6 +16,8 @@ export function Footer({ locale, dict }: FooterProps) {
       links: [
         { href: localePath(locale, '/'), label: dict.footer.converter },
         { href: localePath(locale, '/check'), label: dict.footer.checker },
+        { href: localePath(locale, '/claude-code-login'), label: dict.nav.claudeCodeLogin },
+        { href: localePath(locale, '/claude-usage-limits'), label: dict.nav.claudeUsage },
         { href: localePath(locale, '/credential'), label: dict.nav.getCredential },
       ],
     },
@@ -49,13 +51,17 @@ export function Footer({ locale, dict }: FooterProps) {
 
           <div className="grid grid-cols-2 gap-10 sm:grid-cols-3 lg:gap-16">
             {columns.map((col) => (
-              <div key={col.title}>
-                <h2 className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
+              // <nav> gives the group an accessible name without spending a
+              // heading: the three footer column labels used to emit identical
+              // boilerplate <h2>s on all 18 pages, diluting the heading outline
+              // that search engines and LLM extractors build the topic map from.
+              <nav key={col.title} aria-label={col.title}>
+                <p className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
                   {col.title}
-                </h2>
+                </p>
                 <ul className="mt-4 flex flex-col gap-2.5">
                   {col.links.map((link) => (
-                    <li key={link.href + link.label}>
+                    <li key={link.href}>
                       <a
                         href={link.href}
                         className="ant-link font-sans text-detail-s text-ink-secondary hover:text-ink"
@@ -65,7 +71,7 @@ export function Footer({ locale, dict }: FooterProps) {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </nav>
             ))}
           </div>
         </div>

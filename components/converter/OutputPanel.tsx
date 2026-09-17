@@ -8,6 +8,7 @@ import { FORMAT_META, type CookieFormat } from '@/lib/cookies'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { copyText } from '@/lib/utils/clipboard'
 import { cn } from '@/lib/utils/cn'
+import { metrikaGoal } from '@/lib/analytics'
 import { downloadText } from '@/lib/utils/download'
 import { highlight } from '@/lib/utils/highlight'
 
@@ -110,7 +111,10 @@ export function OutputPanel({
   }, [flashKey])
 
   async function copy(text: string, kind: Exclude<CopiedKind, null>) {
-    if (await copyText(text)) setCopied(kind)
+    if (await copyText(text)) {
+      setCopied(kind)
+      metrikaGoal('output_copied')
+    }
   }
 
   return (
@@ -181,7 +185,10 @@ export function OutputPanel({
           size="sm"
           variant="ghost"
           disabled={!output}
-          onClick={() => downloadText(output, meta.filename, meta.mime)}
+          onClick={() => {
+            downloadText(output, meta.filename, meta.mime)
+            metrikaGoal('output_downloaded')
+          }}
         >
           {dict.converter.download}
         </Button>

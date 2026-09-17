@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header'
 import { LocaleHint } from '@/components/layout/LocaleHint'
 import { Analytics } from '@/components/Analytics'
 import { ThemeScript } from '@/components/layout/ThemeScript'
+import { YandexMetrika, YandexMetrikaNoScript } from '@/components/analytics/YandexMetrika'
 import { getDictionary } from '@/lib/i18n'
 import { LOCALES, LOCALE_META, SITE_URL, isLocale, type Locale } from '@/lib/i18n/config'
 import '../globals.css'
@@ -16,7 +17,11 @@ export function generateStaticParams() {
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: 'claudecookie', template: '%s | claudecookie' },
+  // template is '%s' (no brand suffix): the old '%s | claudecookie' pushed 9 of
+  // 18 sub-page titles past Google's ~60-char cut, and the truncated tail was
+  // always the brand token - pixels spent for nothing. Each page owns its full
+  // title; the brand lives in the home `default` and in the domain itself.
+  title: { default: 'claudecookie — Cookie Converter & Claude cookie checker', template: '%s' },
   applicationName: 'claudecookie',
   robots: { index: true, follow: true },
   icons: {
@@ -59,8 +64,10 @@ export default async function LocaleLayout({ children, params }: LayoutProps) {
     >
       <head>
         <ThemeScript />
+        <YandexMetrika />
       </head>
       <body className="ant-noise min-h-dvh antialiased">
+        <YandexMetrikaNoScript />
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-main focus:bg-invert focus:px-4 focus:py-2 focus:font-sans focus:text-detail-s focus:text-invert-ink"

