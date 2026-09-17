@@ -14,4 +14,4 @@
  * on a large monitor, where a panel taller than about 36rem just puts the
  * Convert button and the counters below the fold.
  */
-export const PANEL_BODY_HEIGHT = 'h-[min(52vh,26rem)] lg:h-[min(62vh,36rem)]'
+export const PANEL_BODY_HEIGHT = 'h-[min(32vh,16rem)] lg:h-[18rem]'

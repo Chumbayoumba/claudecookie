@@ -45,6 +45,9 @@
   --ant-border: #1919181a;
   --ant-border-strong: #19191833;
   --ant-border-tool: #dad8d3;
+  --ant-pane-input: #fcfcfb;
+  --ant-pane-output: #f4f4f2;
+  --ant-pane-input-line: #d4d2cc;
   --ant-accent: #c86648;
   --ant-accent-hover: #b5573c;
   --ant-accent-soft: #fcede7;
@@ -75,6 +78,9 @@
   --ant-border: #faf9f526;
   --ant-border-strong: #faf9f545;
   --ant-border-tool: #3f3e3a;
+  --ant-pane-input: #151513;
+  --ant-pane-output: #121211;
+  --ant-pane-input-line: #4a4842;
   --ant-accent: #c86648;
   --ant-accent-hover: #d4785c;
   --ant-accent-soft: #3a2823;
@@ -113,6 +119,9 @@
   --color-line: var(--ant-border);
   --color-line-strong: var(--ant-border-strong);
   --color-line-tool: var(--ant-border-tool);
+  --color-pane-input: var(--ant-pane-input);
+  --color-pane-output: var(--ant-pane-output);
+  --color-pane-input-line: var(--ant-pane-input-line);
   --color-surface-2: var(--ant-surface-2);
   --color-clay: var(--ant-accent);
   --color-clay-hover: var(--ant-accent-hover);

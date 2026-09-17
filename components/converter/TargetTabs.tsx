@@ -10,13 +10,6 @@ interface TargetTabsProps {
   dict: Dictionary
 }
 
-/**
- * Output format picker.
- *
- * All five formats are always offered, including converting a format to itself -
- * running a hand-edited cookies.txt back through Netscape output is a genuinely
- * useful way to normalise spacing and flags.
- */
 export function TargetTabs({ value, onChange, dict }: TargetTabsProps) {
   return (
     <div
@@ -35,11 +28,11 @@ export function TargetTabs({ value, onChange, dict }: TargetTabsProps) {
             title={dict.formats[format].hint}
             onClick={() => onChange(format)}
             className={cn(
-              'relative cursor-pointer rounded-small px-2.5 py-1 whitespace-nowrap',
+              'relative cursor-pointer px-2.5 py-1 whitespace-nowrap',
               'font-sans text-detail-xs font-medium transition-colors duration-200 ease-ant',
               selected
-                ? 'bg-clay/5 text-ink'
-                : 'text-ink-faint hover:bg-surface-hover hover:text-ink',
+                ? 'bg-clay/5 text-ink after:absolute after:inset-x-2 after:bottom-0 after:h-px after:bg-clay'
+                : 'text-ink-faint hover:text-ink',
             )}
           >
             {dict.formats[format].label}

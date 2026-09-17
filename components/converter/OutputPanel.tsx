@@ -1,29 +1,30 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { PANEL_BODY_HEIGHT } from './layout'
 import { TargetTabs } from './TargetTabs'
 import { Button } from '@/components/ui/Button'
 import { FORMAT_META, type CookieFormat } from '@/lib/cookies'
+import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
+import { plural } from '@/lib/i18n/plural'
 import { copyText } from '@/lib/utils/clipboard'
 import { cn } from '@/lib/utils/cn'
 import { metrikaGoal } from '@/lib/analytics'
 import { downloadText } from '@/lib/utils/download'
 import { highlight } from '@/lib/utils/highlight'
 
-/** Keep in lockstep with InputPanel — mismatched heights misalign the two columns. */
-const EDITOR_HEIGHT = 'h-[min(38vh,18rem)] lg:h-[min(46vh,24rem)]'
-
 interface OutputPanelProps {
   output: string
+  revealed: boolean
   target: CookieFormat
   onTargetChange: (format: CookieFormat) => void
-  /** Bumped by the Convert button to flash the panel border. */
   flashKey: number
+  cookieCount: number
+  locale: Locale
   dict: Dictionary
 }
 
-/** Which copy button last succeeded, so the tick lands on the right one. */
 type CopiedKind = 'multi' | 'line' | null
 
 const ICON = {
@@ -46,9 +47,15 @@ const ICON = {
       />
     </>
   ),
-  // A single horizontal rule, to read as "one line".
-  line: (
-    <path d="M2.5 8h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  line: <path d="M2.5 8h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />,
+  download: (
+    <path
+      d="M8 3.5v8m0 0L5 8.5M8 11.5l3-3M3 13h10"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   ),
 }
 
@@ -64,27 +71,22 @@ function CopyGlyph({ children }: { children: React.ReactNode }) {
 
 export function OutputPanel({
   output,
+  revealed,
   target,
   onTargetChange,
   flashKey,
+  cookieCount,
+  locale,
   dict,
 }: OutputPanelProps) {
   const [copied, setCopied] = useState<CopiedKind>(null)
   const [flash, setFlash] = useState(false)
   const meta = FORMAT_META[target]
   const firstRender = useRef(true)
+  const visible = revealed && Boolean(output)
 
   const highlighted = useMemo(() => highlight(output, meta.syntax), [output, meta.syntax])
 
-  /**
-   * A single-line version of the output, for the "copy line" button.
-   *
-   * Only meaningful for JSON, where it is just the same data without the
-   * pretty-printing that makes a Cookie-Editor export scroll for pages. A
-   * Netscape file is line-based - one cookie per line - so collapsing it would
-   * corrupt it, and a Cookie header is already a single line; in both cases the
-   * button is hidden rather than offered as a no-op.
-   */
   const oneLine = useMemo(() => {
     if (meta.syntax !== 'json' || !output.trim()) return null
     try {
@@ -96,19 +98,17 @@ export function OutputPanel({
 
   useEffect(() => {
     if (!copied) return
-    const timer = setTimeout(() => setCopied(null), 2000)
+    const timer = setTimeout(() => setCopied(null), 1200)
     return () => clearTimeout(timer)
   }, [copied])
 
-  // Pulse the column when Convert is pressed explicitly. Skipping the first run
-  // keeps the panel from flashing on page load.
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false
       return
     }
     setFlash(true)
-    const timer = setTimeout(() => setFlash(false), 700)
+    const timer = setTimeout(() => setFlash(false), 500)
     return () => clearTimeout(timer)
   }, [flashKey])
 
@@ -119,38 +119,44 @@ export function OutputPanel({
     }
   }
 
+  const readyLabel =
+    cookieCount > 0
+      ? `✓ ${dict.formats[target].label} · ${cookieCount} ${plural(locale, cookieCount, dict.stats.cookies)}`
+      : `✓ ${dict.converter.outputReady}`
+
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-1 flex-col',
-        flash ? 'bg-clay/5 duration-0' : 'duration-700',
-        'transition-colors ease-ant',
+        'flex min-w-0 flex-1 flex-col bg-pane-output',
+        'transition-[box-shadow,background-color] ease-ant',
+        flash ? 'duration-0 shadow-[inset_0_0_0_1px_rgba(200,102,72,0.35)]' : 'duration-500',
       )}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 sm:px-4">
+      <div className="flex flex-nowrap items-center gap-x-2 overflow-x-auto px-3 py-2 sm:px-4 border-b border-line">
         <span className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase">
           {dict.converter.outputLabel}
         </span>
+        {visible ? (
+          <span className="inline-flex items-center gap-1.5 font-sans text-detail-xs text-ink-secondary">
+            <span aria-hidden className="size-1.5 rounded-round bg-ok" />
+            {readyLabel}
+          </span>
+        ) : null}
         <TargetTabs value={target} onChange={onTargetChange} dict={dict} />
-        <div className="flex basis-full flex-wrap items-center gap-0.5 sm:ms-auto sm:basis-auto sm:justify-end">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => copy(output, 'multi')}
-            disabled={!output}
-          >
+        <div
+          className={cn(
+            'ms-auto flex shrink-0 items-center gap-0.5',
+            'transition-opacity duration-200 ease-ant',
+            visible ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
+          <Button size="sm" variant="ghost" onClick={() => copy(output, 'multi')} disabled={!visible}>
             <CopyGlyph>{copied === 'multi' ? ICON.check : ICON.copy}</CopyGlyph>
             {copied === 'multi' ? dict.converter.copied : dict.converter.copy}
           </Button>
 
-          {/* Shown only for JSON, where a one-line copy is both meaningful and safe. */}
           {oneLine !== null && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => copy(oneLine, 'line')}
-              disabled={!output}
-            >
+            <Button size="sm" variant="ghost" onClick={() => copy(oneLine, 'line')} disabled={!visible}>
               <CopyGlyph>{copied === 'line' ? ICON.check : ICON.line}</CopyGlyph>
               {copied === 'line' ? dict.converter.copied : dict.converter.copyLine}
             </Button>
@@ -159,24 +165,24 @@ export function OutputPanel({
           <Button
             size="sm"
             variant="ghost"
-            disabled={!output}
+            disabled={!visible}
             title={meta.filename}
             onClick={() => {
               downloadText(output, meta.filename, meta.mime)
               metrikaGoal('output_downloaded')
             }}
           >
+            <CopyGlyph>{ICON.download}</CopyGlyph>
             {dict.converter.download}
           </Button>
         </div>
       </div>
 
-      <div className={cn('ant-scroll relative overflow-auto bg-bg', EDITOR_HEIGHT)}>
-        {output ? (
+      <div className={cn('ant-scroll relative overflow-auto bg-transparent', PANEL_BODY_HEIGHT)}>
+        {visible ? (
           <pre
             className={cn(
               'px-4 py-4 font-mono text-detail-s leading-relaxed text-ink',
-              // `break-all` keeps long JWT values from forcing a horizontal scroll.
               'break-all whitespace-pre-wrap',
               meta.syntax === 'json' ? 'ant-json' : 'ant-netscape',
             )}
@@ -188,7 +194,7 @@ export function OutputPanel({
             )}
           </pre>
         ) : (
-          <p className="px-4 py-4 font-mono text-detail-s text-ink-faint">
+          <p className="grid h-full place-items-center px-4 font-sans text-detail-s text-ink-faint">
             {dict.converter.outputPlaceholder}
           </p>
         )}

@@ -66,6 +66,20 @@ export const SAMPLE_COOKIE_EDITOR = JSON.stringify(
   2,
 )
 
+export const SAMPLE_HEADER = [
+  `session_id=8f14e45fceea167a5a36dedd4bea2543`,
+  `theme=dark`,
+  `cart_preview=tmp-4471`,
+].join('; ')
+
+export type SampleKind = 'netscape' | 'cookie-editor' | 'header'
+
+export function sampleNamed(kind: SampleKind): string {
+  if (kind === 'cookie-editor') return SAMPLE_COOKIE_EDITOR
+  if (kind === 'header') return SAMPLE_HEADER
+  return SAMPLE_NETSCAPE
+}
+
 /**
  * Picks the sample that is *not* what the user is currently looking at, so
  * pressing Sample twice demonstrates both directions.

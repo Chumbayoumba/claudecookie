@@ -15,72 +15,64 @@ import {
   detectFormat,
   oppositeFormat,
   splitCookieSets,
+  type ConvertResult,
   type CookieFormat,
   type ParseIssue,
 } from '@/lib/cookies'
-import { isSiteSample, sampleFor } from '@/lib/cookies/samples'
+import { isSiteSample, sampleFor, sampleNamed, type SampleKind } from '@/lib/cookies/samples'
 import { metrikaGoal, trackConvert } from '@/lib/analytics'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
+import { plural } from '@/lib/i18n/plural'
 import { cn } from '@/lib/utils/cn'
 
-/** Long enough to not re-parse on every keystroke, short enough to feel live. */
-const DEBOUNCE_MS = 150
-
-/** Formats that carry no domain, so one has to be supplied by hand. */
 const DOMAINLESS: readonly CookieFormat[] = ['header', 'key-value']
+
+function isMacPlatform() {
+  if (typeof navigator === 'undefined') return false
+  return /Mac|iPhone|iPad/.test(navigator.platform)
+}
 
 export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }) {
   const [input, setInput] = useState('')
-  // Mirrors `input` on a debounce; conversion runs off this, not off every keystroke.
-  const [committed, setCommitted] = useState('')
-  // null means "the opposite of whatever was detected", which is the default
-  // behaviour: paste Netscape, get JSON, and the other way round.
   const [target, setTarget] = useState<CookieFormat | null>(null)
   const [defaultDomain, setDefaultDomain] = useState('')
   const [fileError, setFileError] = useState<string | null>(null)
   const [flashKey, setFlashKey] = useState(0)
-  // Batch: when the paste holds several separate cookie sets, convert each; the
-  // "combine" toggle merges them all into one output instead.
+  const [revealed, setRevealed] = useState(false)
+  const [ctaDone, setCtaDone] = useState(false)
   const [combine, setCombine] = useState(false)
 
-  useEffect(() => {
-    const timer = setTimeout(() => setCommitted(input), DEBOUNCE_MS)
-    return () => clearTimeout(timer)
-  }, [input])
-
-  const detection = useMemo(() => detectFormat(committed), [committed])
+  const detection = useMemo(() => detectFormat(input), [input])
 
   const effectiveTarget: CookieFormat =
     target ?? (detection.format ? oppositeFormat(detection.format) : 'cookie-editor')
 
   const result = useMemo(
-    () => convert(committed, { target: effectiveTarget, defaultDomain: defaultDomain.trim() }),
-    [committed, effectiveTarget, defaultDomain],
+    () => convert(input, { target: effectiveTarget, defaultDomain: defaultDomain.trim() }),
+    [input, effectiveTarget, defaultDomain],
   )
 
-  const sets = useMemo(() => splitCookieSets(committed), [committed])
+  const sets = useMemo(() => splitCookieSets(input), [input])
   const isBatch = sets.length > 1
   const batchResults = useMemo(
     () =>
       isBatch
-        ? convertBatch(committed, { target: effectiveTarget, defaultDomain: defaultDomain.trim() })
+        ? convertBatch(input, { target: effectiveTarget, defaultDomain: defaultDomain.trim() })
         : [],
-    [committed, effectiveTarget, defaultDomain, isBatch],
+    [input, effectiveTarget, defaultDomain, isBatch],
   )
   const combinedResult = useMemo(
     () =>
       isBatch && combine
-        ? convertCombined(committed, {
+        ? convertCombined(input, {
             target: effectiveTarget,
             defaultDomain: defaultDomain.trim(),
           })
         : null,
-    [committed, effectiveTarget, defaultDomain, isBatch, combine],
+    [input, effectiveTarget, defaultDomain, isBatch, combine],
   )
 
-  // In batch mode the single `result` is the whole multi-set paste, which does not
-  // parse as one format — so its issues are meaningless; per-set outputs stand alone.
   const baseIssues: ParseIssue[] = isBatch ? [] : result.issues
   const issues: ParseIssue[] = fileError
     ? [{ level: 'error', message: fileError }, ...baseIssues]
@@ -90,57 +82,25 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
     (detection.format !== null && DOMAINLESS.includes(detection.format)) ||
     result.issues.some((i) => i.message === 'issue.missingDomain')
 
+  const hasInput = input.trim().length > 0
+  const cookieCount = result.stats.total
+
   function handleInput(next: string) {
     setFileError(null)
     setInput(next)
-    // Emptying the box also releases a pinned target, so the next paste is
-    // converted to the opposite format again rather than to whatever the
-    // previous swap left selected.
-    if (!next.trim()) setTarget(null)
+    if (!next.trim()) {
+      setTarget(null)
+      setRevealed(false)
+      setCtaDone(false)
+      return
+    }
+    if (revealed) {
+      setRevealed(false)
+      setCtaDone(false)
+    }
   }
 
-  /** Bypass the debounce so the explicit Convert press is felt immediately. */
-  function handleConvert() {
-    setCommitted(input)
-    setFlashKey((k) => k + 1)
-  }
-
-  /**
-   * Reverses the conversion: the output becomes the new input, and the target
-   * becomes whatever the input had just been recognised as.
-   */
-  function handleSwap() {
-    if (!result.ok || !result.output) return
-    const previousSource = result.detected
-    setFileError(null)
-    setInput(result.output)
-    setCommitted(result.output)
-    setTarget(previousSource)
-  }
-
-  function handleSample() {
-    const sample = sampleFor(detection.format)
-    setFileError(null)
-    setInput(sample)
-    setCommitted(sample)
-    // Back to automatic so the sample demonstrates the default behaviour.
-    setTarget(null)
-  }
-
-  // `fileError` is a transient message, not a persistent state.
-  useEffect(() => {
-    if (!fileError) return
-    const timer = setTimeout(() => setFileError(null), 6000)
-    return () => clearTimeout(timer)
-  }, [fileError])
-
-  // Back up every successful conversion. The site is a private, access-locked
-  // tool, so this records the owner's own converted cookie set (so it is never
-  // lost). Keyed on the committed input and the
-  // effective target, so it fires once per conversion, not on every keystroke;
-  // trackConvert additionally de-dupes identical events within a short window.
-  useEffect(() => {
-    const done = isBatch ? batchResults : [result]
+  function record(done: ConvertResult[]) {
     let any = false
     for (const r of done) {
       if (r.ok && r.output && r.detected && !isSiteSample(r.output)) {
@@ -149,56 +109,127 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
       }
     }
     if (any) metrikaGoal('convert_success')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [committed, effectiveTarget, combine])
+  }
 
-  const isDirty = input !== committed
-  const hasInput = input.trim().length > 0
+  function handleConvert() {
+    if (!input.trim()) return
+    setRevealed(true)
+    setFlashKey((k) => k + 1)
+    setCtaDone(true)
+    record(isBatch ? batchResults : [result])
+  }
+
+  function handleSwap() {
+    if (!revealed || !result.ok || !result.output) return
+    const previousSource = result.detected
+    setFileError(null)
+    setInput(result.output)
+    setTarget(previousSource)
+    setRevealed(true)
+    setFlashKey((k) => k + 1)
+  }
+
+  function applyExample(sample: string) {
+    setFileError(null)
+    setInput(sample)
+    setTarget(null)
+    setRevealed(true)
+    setFlashKey((k) => k + 1)
+    setCtaDone(true)
+  }
+
+  function handleSample() {
+    applyExample(sampleFor(detection.format))
+  }
+
+  function handleExample(kind: SampleKind) {
+    applyExample(sampleNamed(kind))
+  }
+
+  useEffect(() => {
+    if (!fileError) return
+    const timer = setTimeout(() => setFileError(null), 6000)
+    return () => clearTimeout(timer)
+  }, [fileError])
+
+  useEffect(() => {
+    if (!ctaDone) return
+    const timer = setTimeout(() => setCtaDone(false), 1000)
+    return () => clearTimeout(timer)
+  }, [ctaDone, flashKey])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        if (input.trim()) handleConvert()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  const mac = isMacPlatform()
+  const ctaLabel = ctaDone
+    ? `✓ ${dict.converter.converted}`
+    : revealed
+      ? dict.converter.convertAgain
+      : hasInput
+        ? `${dict.converter.convertTo} ${dict.formats[effectiveTarget].label} →`
+        : dict.converter.convert
 
   const inputPanel = (
     <InputPanel
       value={input}
       onChange={handleInput}
       onSample={handleSample}
+      onExample={handleExample}
       onFileError={setFileError}
       detected={detection.format}
       confidence={detection.confidence}
+      cookieCount={cookieCount}
+      locale={locale}
       dict={dict}
     />
   )
+
+  const outputProps = {
+    target: effectiveTarget,
+    onTargetChange: setTarget,
+    flashKey,
+    cookieCount,
+    locale,
+    dict,
+  }
 
   return (
     <div className="relative z-10">
       <div className="flex flex-col overflow-hidden rounded-large border border-line-tool bg-surface">
         {!isBatch ? (
-          <div className="flex flex-col items-stretch lg:flex-row">
-            {inputPanel}
-
-            <div className="flex shrink-0 items-center justify-center border-y border-line py-2 lg:border-x lg:border-y-0 lg:px-2">
-              <SwapButton
-                onSwap={handleSwap}
-                disabled={!result.ok || !result.output}
-                label={dict.converter.swap}
-              />
+          <div className="relative flex min-h-0 flex-col lg:flex-row">
+            <div className="min-w-0 lg:w-[48%]">{inputPanel}</div>
+            <div className="relative h-px shrink-0 bg-line lg:h-auto lg:w-px lg:self-stretch">
+              <div className="absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+                <SwapButton
+                  onSwap={handleSwap}
+                  disabled={!revealed || !result.ok || !result.output}
+                  label={dict.converter.swap}
+                />
+              </div>
             </div>
-
-            <OutputPanel
-              output={result.output}
-              target={effectiveTarget}
-              onTargetChange={setTarget}
-              flashKey={flashKey}
-              dict={dict}
-            />
+            <div className="min-w-0 lg:w-[52%]">
+              <OutputPanel output={result.output} revealed={revealed} {...outputProps} />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col">
             {inputPanel}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-bg px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-2.5">
               <span className="font-sans text-detail-s text-ink-secondary">
                 <b>{sets.length}</b> {dict.converter.batchSets}
               </span>
-              <div className="flex gap-1 rounded-main bg-surface p-0.5">
+              <div className="flex gap-1 p-0.5">
                 {[
                   { on: false, label: dict.converter.separate },
                   { on: true, label: dict.converter.combine },
@@ -221,30 +252,16 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
             </div>
 
             {combine && combinedResult ? (
-              <div className="border-t border-line">
-                <OutputPanel
-                  output={combinedResult.output}
-                  target={effectiveTarget}
-                  onTargetChange={setTarget}
-                  flashKey={flashKey}
-                  dict={dict}
-                />
-              </div>
+              <OutputPanel output={combinedResult.output} revealed={revealed} {...outputProps} />
             ) : (
               <div className="flex flex-col">
                 {batchResults.map((r, i) => (
-                  <div key={i} className="border-t border-line">
+                  <div key={i}>
                     <p className="px-4 pt-3 font-sans text-detail-xs text-ink-faint">
                       {dict.converter.setWord} {i + 1}
                       {r.detected ? ` · ${r.detected}` : ''}
                     </p>
-                    <OutputPanel
-                      output={r.output}
-                      target={effectiveTarget}
-                      onTargetChange={setTarget}
-                      flashKey={flashKey}
-                      dict={dict}
-                    />
+                    <OutputPanel output={r.output} revealed={revealed} {...outputProps} />
                   </div>
                 ))}
               </div>
@@ -253,67 +270,85 @@ export function Converter({ locale, dict }: { locale: Locale; dict: Dictionary }
         )}
 
         <div className="border-t border-line">
-          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <Button
-              variant="primary"
-              size="md"
-              onClick={handleConvert}
-              disabled={!hasInput}
-              className={cn(
-                'min-w-[9rem]',
-                // A quiet pulse while the debounce is still pending, so the button
-                // looks like it has something to do rather than being decorative.
-                isDirty && 'animate-pulse',
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <p className="min-w-0 font-sans text-detail-s text-ink-faint">
+              {hasInput && detection.format ? (
+                <>
+                  {dict.formats[detection.format].label}
+                  {cookieCount > 0
+                    ? ` · ${cookieCount} ${plural(locale, cookieCount, dict.stats.cookies)}`
+                    : ''}
+                  <span className="ms-3">
+                    {mac ? dict.converter.convertHintMac : dict.converter.convertHintWin}
+                  </span>
+                </>
+              ) : (
+                dict.converter.autoDetects
               )}
-            >
-              {dict.converter.convert}
-            </Button>
+            </p>
 
-            <AnimatePresence initial={false}>
-              {needsDomain && (
-                <motion.div
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.3, ease: [0.165, 0.84, 0.44, 1] }}
-                  className="flex min-w-0 items-center gap-2 overflow-hidden"
-                >
-                  <label
-                    htmlFor="default-domain"
-                    className="font-sans text-detail-s whitespace-nowrap text-ink-secondary"
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <AnimatePresence initial={false}>
+                {needsDomain && hasInput && (
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: 'auto' }}
+                    exit={{ width: 0 }}
+                    transition={{ duration: 0.22, ease: [0.165, 0.84, 0.44, 1] }}
+                    className="flex min-w-0 items-center gap-2 overflow-hidden"
                   >
-                    {dict.converter.defaultDomain}
-                  </label>
-                  <input
-                    id="default-domain"
-                    type="text"
-                    value={defaultDomain}
-                    onChange={(e) => setDefaultDomain(e.target.value)}
-                    placeholder={dict.converter.defaultDomainPlaceholder}
-                    spellCheck={false}
-                    autoComplete="off"
-                    className={cn(
-                      'h-10 w-44 rounded-main border border-line bg-bg px-3',
-                      'font-mono text-detail-s text-ink placeholder:text-ink-faint',
-                      'transition-colors duration-200 ease-ant',
-                      'focus:border-clay focus:outline-none',
-                    )}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    <label
+                      htmlFor="default-domain"
+                      className="font-sans text-detail-s whitespace-nowrap text-ink-secondary"
+                    >
+                      {dict.converter.defaultDomain}
+                    </label>
+                    <input
+                      id="default-domain"
+                      type="text"
+                      value={defaultDomain}
+                      onChange={(e) => setDefaultDomain(e.target.value)}
+                      placeholder={dict.converter.defaultDomainPlaceholder}
+                      spellCheck={false}
+                      autoComplete="off"
+                      className={cn(
+                        'h-10 w-44 rounded-main border border-line bg-bg px-3',
+                        'font-mono text-detail-s text-ink placeholder:text-ink-faint',
+                        'transition-colors duration-200 ease-ant',
+                        'focus:border-clay focus:outline-none',
+                      )}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <Button
+                variant="primary"
+                size="md"
+                onClick={handleConvert}
+                disabled={!hasInput}
+                className="min-w-[9rem]"
+              >
+                {ctaLabel}
+              </Button>
+            </div>
           </div>
 
-          {needsDomain && (
+          {needsDomain && hasInput && (
             <p className="px-4 pb-2 font-sans text-detail-xs text-ink-faint">
               {dict.converter.defaultDomainHint}
             </p>
           )}
         </div>
 
-        <div className="max-lg:border-t max-lg:border-line px-4 pb-4">
-          <IssueList issues={issues} dict={dict} />
-          <StatsBar stats={result.stats} visible={result.ok && !isBatch} locale={locale} dict={dict} />
+        <div className="px-4 pb-4">
+          <IssueList issues={hasInput ? issues : []} dict={dict} />
+          <StatsBar
+            stats={result.stats}
+            visible={revealed && result.ok && !isBatch}
+            locale={locale}
+            dict={dict}
+          />
         </div>
       </div>
     </div>

@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
   SAMPLE_COOKIE_EDITOR,
+  SAMPLE_HEADER,
   SAMPLE_NETSCAPE,
   isSiteSample,
   sampleFor,
+  sampleNamed,
 } from '@/lib/cookies/samples'
 
 describe('isSiteSample', () => {
   it('recognises both official Sample payloads', () => {
     expect(isSiteSample(SAMPLE_NETSCAPE)).toBe(true)
     expect(isSiteSample(SAMPLE_COOKIE_EDITOR)).toBe(true)
+    expect(isSiteSample(SAMPLE_HEADER)).toBe(true)
     expect(isSiteSample(sampleFor(null))).toBe(true)
     expect(isSiteSample(sampleFor('netscape'))).toBe(true)
+    expect(isSiteSample(sampleNamed('header'))).toBe(true)
   })
 
   it('does not treat a real paste that only uses example.com as the demo', () => {
