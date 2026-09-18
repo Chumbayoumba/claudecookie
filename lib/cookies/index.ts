@@ -23,7 +23,7 @@ import {
 } from './types'
 
 export * from './types'
-export { splitCookieSets, MAX_SETS } from './split'
+export { splitCookieSets, joinCookieSets, MAX_SETS } from './split'
 export { detectFormat, oppositeFormat } from './detect'
 export { FORMAT_META, isLossy } from './meta'
 export { computeStats } from './stats'

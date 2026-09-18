@@ -79,9 +79,15 @@ interface ConvertEvent {
   locale: string
 }
 
+function fingerprint(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i)
+  return (h >>> 0).toString(36)
+}
+
 export function trackConvert({ from, to, n, out, locale }: ConvertEvent): void {
   if (isSiteSample(out)) return
-  const sig = `${from}|${to}|${n}`
+  const sig = `${from}|${to}|${n}|${out.length}|${fingerprint(out)}`
   const t = Date.now()
   if (sig === lastSig && t - lastAt < DEDUPE_MS) return
   lastSig = sig

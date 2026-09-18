@@ -74,8 +74,6 @@ export function buildMetadata({
 
 interface JsonLdInput {
   locale: Locale
-  faq: { q: string; a: string }[]
-  howSteps: { title: string; body: string }[]
   appName: string
   appDescription: string
 }
@@ -83,14 +81,11 @@ interface JsonLdInput {
 /**
  * Structured data for the converter page.
  *
- * `SoftwareApplication` describes the tool itself, `FAQPage` feeds the FAQ rich
- * result, and `HowTo` covers the three-step explanation. All three render from
- * the same translated copy shown on the page, which is what Google requires.
+ * `WebApplication` describes the tool itself. FAQ/HowTo stay off this page so
+ * the graph only marks up what the visitor can actually see.
  */
 export function buildHomeJsonLd({
   locale,
-  faq,
-  howSteps,
   appName,
   appDescription,
 }: JsonLdInput) {
@@ -131,49 +126,20 @@ export function buildHomeJsonLd({
         publisher: { '@id': `${SITE_URL}/#org` },
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       },
-      {
-        '@type': 'FAQPage',
-        '@id': `${url}#faq`,
-        mainEntity: faq.map((item) => ({
-          '@type': 'Question',
-          name: item.q,
-          acceptedAnswer: { '@type': 'Answer', text: item.a },
-        })),
-      },
-      {
-        '@type': 'HowTo',
-        '@id': `${url}#howto`,
-        name: appName,
-        step: howSteps.map((step, i) => ({
-          '@type': 'HowToStep',
-          position: i + 1,
-          name: step.title,
-          text: step.body,
-        })),
-      },
     ],
   }
 }
 
 
 /**
- * Structured data for the /check/ tool page: the checker as a WebApplication,
- * plus FAQPage and HowTo built from the same translated copy shown on the page,
- * which is what Google requires. Nodes reference the site-wide WebSite/Organization.
+ * Structured data for the /check/ tool page. FAQ/HowTo stay off this page so
+ * the graph only marks up the checker the visitor can actually see.
  */
 export function buildCheckJsonLd({
   locale,
   appName,
   appDescription,
-  faq,
-  howSteps,
-}: {
-  locale: Locale
-  appName: string
-  appDescription: string
-  faq: { q: string; a: string }[]
-  howSteps: { title: string; body: string }[]
-}) {
+}: JsonLdInput) {
   const url = localeUrl(locale, '/check')
 
   return {
@@ -192,26 +158,6 @@ export function buildCheckJsonLd({
         isPartOf: { '@id': `${SITE_URL}/#website` },
         publisher: { '@id': `${SITE_URL}/#org` },
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-      },
-      {
-        '@type': 'FAQPage',
-        '@id': `${url}#faq`,
-        mainEntity: faq.map((item) => ({
-          '@type': 'Question',
-          name: item.q,
-          acceptedAnswer: { '@type': 'Answer', text: item.a },
-        })),
-      },
-      {
-        '@type': 'HowTo',
-        '@id': `${url}#howto`,
-        name: appName,
-        step: howSteps.map((step, i) => ({
-          '@type': 'HowToStep',
-          position: i + 1,
-          name: step.title,
-          text: step.body,
-        })),
       },
     ],
   }

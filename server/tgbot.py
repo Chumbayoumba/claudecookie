@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -509,7 +510,7 @@ def _pipeline_blob_count(conn, valid_only: bool) -> int:
 def _pipeline_blob_rows(conn, valid_only: bool):
     extra = "AND e.valid=1" if valid_only else ""
     return conn.execute(
-        f"SELECT e.id, e.ts, e.type, e.to_fmt, e.valid, b.output FROM events e "
+        f"SELECT e.id, e.ts, e.type, e.to_fmt, e.valid, e.info, b.output FROM events e "
         f"JOIN blobs b ON b.event_id=e.id "
         f"WHERE e.type IN ('convert','check') {extra} ORDER BY e.id",
     ).fetchall()
@@ -595,9 +596,33 @@ def _send_zip(chat_id: int, path: str, fname: str, caption: str) -> None:
             pass
 
 
+def _file_slug(raw: str) -> str:
+    cleaned = re.sub(r"[^\w.+-]+", "-", raw or "", flags=re.UNICODE)
+    cleaned = re.sub(r"-+", "-", cleaned).strip("-").lower()
+    return cleaned[:48]
+
+
 def _zip_entry_name(row) -> str:
     if row["type"] == "check":
-        return f"check-{row['id']}-{_stamp(row['ts'])}.txt"
+        email = ""
+        plan = ""
+        try:
+            raw_info = row["info"]
+        except (IndexError, KeyError):
+            raw_info = None
+        if raw_info:
+            try:
+                info = json.loads(raw_info)
+            except (TypeError, ValueError):
+                info = {}
+            if isinstance(info, dict):
+                email = info.get("email") or ""
+                plan = info.get("plan") or info.get("planLabel") or ""
+        local = email.split("@", 1)[0] if email else ""
+        user = _file_slug(local) or "account"
+        plan_part = _file_slug(re.sub(r"(?i)^claude\s+", "", plan)) or "plan"
+        mark = "valid" if row["valid"] == 1 else "invalid"
+        return f"{user}-{plan_part}-{mark}.txt"
     ext = "json" if row["to_fmt"] in JSON_FORMATS else "txt"
     return f"convert-{row['id']}-{_stamp(row['ts'])}.{ext}"
 

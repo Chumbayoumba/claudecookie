@@ -203,6 +203,18 @@ class TgbotTests(unittest.TestCase):
         self.bot.send = lambda *a, **k: None
         return sent
 
+    def test_check_zip_name_uses_email_and_plan(self) -> None:
+        conn = self._conn()
+        info = json.dumps({"email": "Andreas@example.com", "plan": "Claude Max"})
+        self._event(conn, "check", valid=1, info=info, output="sessionKey=sk-ant-OK")
+        conn.commit()
+        sent = self._capture_docs()
+        toast = self.bot.download_pipeline(conn, 1, "valid", "zip")
+        conn.close()
+        self.assertTrue(toast.startswith("Отправлено"))
+        with zipfile.ZipFile(io.BytesIO(sent[0]["content"])) as z:
+            self.assertEqual(z.namelist(), ["andreas-max-valid.txt"])
+
     def test_download_valid_skips_invalid_and_unchecked(self) -> None:
         conn = self._conn()
         self._event(conn, "check", valid=1, output="sessionKey=sk-ant-OK")

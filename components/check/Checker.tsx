@@ -1,19 +1,32 @@
 'use client'
 
 import { AnimatePresence, motion } from 'motion/react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import { CheckingBar } from './CheckingBar'
 import { TrustRow } from './TrustRow'
 import { UsageCard } from './UsageCard'
 import { sealJson } from '@/lib/box'
+import { joinCookieSets, MAX_INPUT_BYTES, MAX_SETS } from '@/lib/cookies'
 import { splitCookieSets } from '@/lib/cookies/split'
 import { metrikaGoal } from '@/lib/analytics'
+import { chunkSets } from '@/lib/check/batch'
+import { cookieFileSlug, validCookieFiles } from '@/lib/check/filename'
 import type { CheckResult } from '@/lib/check/types'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { Button } from '@/components/ui/Button'
 import { Pill } from '@/components/ui/Pill'
 import { cn } from '@/lib/utils/cn'
+import { downloadText } from '@/lib/utils/download'
+import { downloadZip } from '@/lib/utils/zip'
 
 const EASE = [0.165, 0.84, 0.44, 1] as const
 const RISE = { duration: 0.24, ease: EASE } as const
@@ -21,6 +34,11 @@ const RISE = { duration: 0.24, ease: EASE } as const
 interface CheckerProps {
   locale: Locale
   dict: Dictionary
+}
+
+interface CheckRow {
+  raw: string
+  result: CheckResult
 }
 
 function reasonText(dict: Dictionary, reason?: string): string {
@@ -31,11 +49,86 @@ function reasonText(dict: Dictionary, reason?: string): string {
   return dict.check.error
 }
 
+async function postChecks(sets: string[], locale: Locale): Promise<CheckResult[]> {
+  let tz: string | undefined
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  } catch {
+    tz = undefined
+  }
+  const asBatch = sets.length > 1
+  const chunks = asBatch ? chunkSets(sets) : [sets]
+  const out: CheckResult[] = []
+  for (const chunk of chunks) {
+    const box = await sealJson(
+      asBatch ? { cookies: chunk, l: locale, tz } : { cookie: chunk[0], l: locale, tz },
+    )
+    const response = await fetch('/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(box),
+    })
+    if (!response.ok) throw new Error('check')
+    if (asBatch) {
+      const data = (await response.json()) as { results?: CheckResult[] }
+      const rows = Array.isArray(data.results) ? data.results.slice() : []
+      while (rows.length < chunk.length) {
+        rows.push({ ok: false, invalidReason: 'unreachable' })
+      }
+      out.push(...rows.slice(0, chunk.length))
+    } else {
+      out.push((await response.json()) as CheckResult)
+    }
+  }
+  return out
+}
+
 export function Checker({ locale, dict }: CheckerProps) {
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
-  const [results, setResults] = useState<CheckResult[] | null>(null)
+  const [rows, setRows] = useState<CheckRow[] | null>(null)
   const [failed, setFailed] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const dragDepth = useRef(0)
+
+  useEffect(() => {
+    if (!fileError) return
+    const timer = setTimeout(() => setFileError(null), 6000)
+    return () => clearTimeout(timer)
+  }, [fileError])
+
+  async function readFiles(files: File[]) {
+    const picked = files.slice(0, MAX_SETS)
+    if (picked.some((f) => f.size > MAX_INPUT_BYTES)) {
+      setFileError(dict.check.fileTooLarge)
+      return
+    }
+    try {
+      const texts = await Promise.all(picked.map((f) => f.text()))
+      const incoming = joinCookieSets(texts)
+      if (!incoming) return
+      setValue((current) => (current.trim() ? joinCookieSets([current, incoming]) : incoming))
+      setFileError(null)
+    } catch {
+      setFileError(dict.check.readError)
+    }
+  }
+
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    dragDepth.current = 0
+    setDragging(false)
+    const files = [...e.dataTransfer.files]
+    if (files.length) void readFiles(files)
+  }
+
+  function onFilePicked(e: ChangeEvent<HTMLInputElement>) {
+    const files = [...(e.target.files ?? [])]
+    if (files.length) void readFiles(files)
+    e.target.value = ''
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -43,44 +136,23 @@ export function Checker({ locale, dict }: CheckerProps) {
     setBusy(true)
     metrikaGoal('check_started')
     try {
-      let tz: string | undefined
-      try {
-        tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-      } catch {
-        tz = undefined
-      }
-      // A paste of several separate cookies is split and checked as a batch;
-      // a single cookie keeps the original single-object request/response.
       const sets = splitCookieSets(value)
-      let out: CheckResult[]
-      if (sets.length > 1) {
-        const box = await sealJson({ cookies: sets, l: locale, tz })
-        const response = await fetch('/check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(box),
-        })
-        const data = (await response.json()) as { results?: CheckResult[] }
-        out = Array.isArray(data.results) ? data.results : []
-      } else {
-        const box = await sealJson({ cookie: value, l: locale, tz })
-        const response = await fetch('/check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(box),
-        })
-        out = [(await response.json()) as CheckResult]
-      }
+      const source = sets.length > 0 ? sets : [value]
+      const out = await postChecks(source, locale)
       if (out.length === 0) {
-        setResults(null)
+        setRows(null)
         setFailed(true)
         metrikaGoal('check_failed')
       } else {
-        setResults(out)
-        metrikaGoal(out.every((r) => r.ok) ? 'check_valid' : 'check_invalid')
+        const paired = source.slice(0, out.length).map((raw, i) => ({
+          raw,
+          result: out[i]!,
+        }))
+        setRows(paired)
+        metrikaGoal(paired.every((r) => r.result.ok) ? 'check_valid' : 'check_invalid')
       }
     } catch {
-      setResults(null)
+      setRows(null)
       setFailed(true)
       metrikaGoal('check_failed')
     } finally {
@@ -88,23 +160,90 @@ export function Checker({ locale, dict }: CheckerProps) {
     }
   }
 
+  const validRows = rows?.filter((r) => r.result.ok) ?? []
+
+  function downloadJoined() {
+    if (validRows.length === 0) return
+    if (validRows.length === 1) {
+      downloadOne(validRows[0]!)
+      return
+    }
+    downloadText(joinCookieSets(validRows.map((r) => r.raw)), 'valid-cookies.txt', 'text/plain')
+  }
+
+  function downloadEach() {
+    const files = validCookieFiles(
+      validRows.map((r) => ({
+        raw: r.raw,
+        email: r.result.email,
+        plan: r.result.planLabel,
+      })),
+    )
+    if (files.length === 0) return
+    if (files.length === 1) {
+      downloadText(files[0]!.text, files[0]!.name, 'text/plain')
+      return
+    }
+    downloadZip(files, 'valid-cookies.zip')
+  }
+
+  function downloadOne(row: CheckRow) {
+    const name = `${cookieFileSlug(row.result.email, row.result.planLabel)}.txt`
+    downloadText(row.raw, name, 'text/plain')
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <div
+          onDragEnter={(e) => {
+            e.preventDefault()
+            dragDepth.current += 1
+            setDragging(true)
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={(e) => {
+            e.preventDefault()
+            dragDepth.current -= 1
+            if (dragDepth.current <= 0) setDragging(false)
+          }}
+          onDrop={onDrop}
           className={cn(
-            'overflow-hidden rounded-large border border-line bg-surface',
+            'relative overflow-hidden rounded-large border border-line bg-surface',
             'transition-colors duration-200 ease-ant hover:border-line-strong',
             busy && 'border-clay/35',
+            dragging && 'border-clay/50 bg-clay/5',
           )}
         >
-          <div className="border-b border-line px-4 py-3">
+          <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
             <label
               htmlFor="claude-cookie"
               className="font-sans text-detail-xs font-semibold tracking-[0.08em] text-ink-faint uppercase"
             >
               {dict.check.inputLabel}
             </label>
+            <div className="ms-auto flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => fileInput.current?.click()}
+                className="text-ink-faint"
+              >
+                <UploadIcon />
+                {dict.check.upload}
+              </Button>
+            </div>
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              accept=".txt,.json,text/plain,application/json"
+              onChange={onFilePicked}
+              className="hidden"
+              tabIndex={-1}
+            />
           </div>
           <CheckingBar active={busy} />
           <textarea
@@ -125,8 +264,18 @@ export function Checker({ locale, dict }: CheckerProps) {
             )}
           />
           <p className="border-t border-line px-4 py-2.5 font-sans text-detail-xs text-ink-faint">
-            {dict.check.formatsHint}
+            {fileError ?? dict.check.formatsHint}
           </p>
+          <div
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute inset-0 grid place-items-center bg-surface/80',
+              'transition-opacity duration-200 ease-ant',
+              dragging ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            <span className="font-sans text-detail-l font-medium text-ink">{dict.check.dropHere}</span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -136,11 +285,12 @@ export function Checker({ locale, dict }: CheckerProps) {
           <Button
             type="button"
             variant="ghost"
-            disabled={!value && !results}
+            disabled={busy || (!value && !rows)}
             onClick={() => {
               setValue('')
-              setResults(null)
+              setRows(null)
               setFailed(false)
+              setFileError(null)
             }}
           >
             {dict.check.clear}
@@ -165,32 +315,53 @@ export function Checker({ locale, dict }: CheckerProps) {
       </AnimatePresence>
 
       <AnimatePresence initial={false} mode="wait">
-        {results ? (
+        {rows ? (
           <motion.div
-            key={`n${results.length}-${results[0]?.ok ? 'v' : 'x'}`}
+            key={`n${rows.length}-${rows[0]?.result.ok ? 'v' : 'x'}`}
             initial={{ y: 8 }}
             animate={{ y: 0 }}
             exit={{ y: 6 }}
             transition={RISE}
             className="flex flex-col gap-4"
           >
-            {results.length > 1 ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-sans text-detail-s text-ink-secondary">
-                <span>
-                  {dict.check.batchHeading}: <b className="text-ink">{results.length}</b>
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-ok">
-                  <MarkOk />
-                  {results.filter((r) => r.ok).length}
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-error">
-                  <MarkBad />
-                  {results.filter((r) => !r.ok).length}
-                </span>
-              </div>
-            ) : null}
-            {results.map((r, i) => (
-              <CheckReport key={i} result={r} dict={dict} />
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+              {rows.length > 1 ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-sans text-detail-s text-ink-secondary">
+                  <span>
+                    {dict.check.batchHeading}: <b className="text-ink">{rows.length}</b>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-ok">
+                    <MarkOk />
+                    {validRows.length}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-error">
+                    <MarkBad />
+                    {rows.length - validRows.length}
+                  </span>
+                </div>
+              ) : (
+                <span />
+              )}
+              {validRows.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="secondary" onClick={downloadJoined}>
+                    {dict.check.downloadValid}
+                  </Button>
+                  {validRows.length > 1 ? (
+                    <Button type="button" size="sm" variant="ghost" onClick={downloadEach}>
+                      {dict.check.downloadValidEach}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {rows.map((row, i) => (
+              <CheckReport
+                key={i}
+                result={row.result}
+                dict={dict}
+                onDownload={row.result.ok ? () => downloadOne(row) : undefined}
+              />
             ))}
           </motion.div>
         ) : null}
@@ -203,10 +374,12 @@ export function CheckReport({
   result,
   dict,
   footer,
+  onDownload,
 }: {
   result: CheckResult
   dict: Dictionary
   footer?: ReactNode
+  onDownload?: () => void
 }) {
   if (!result.ok) {
     return (
@@ -226,7 +399,14 @@ export function CheckReport({
             <CheckIcon />
             {dict.check.valid}
           </Pill>
-          {result.planLabel ? <Pill tone="accent">{result.planLabel}</Pill> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {result.planLabel ? <Pill tone="accent">{result.planLabel}</Pill> : null}
+            {onDownload ? (
+              <Button type="button" size="sm" variant="ghost" onClick={onDownload}>
+                {dict.check.downloadThis}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <dl className="mt-5 grid gap-5 sm:grid-cols-2">
@@ -312,6 +492,20 @@ function CheckIcon() {
   )
 }
 
+function UploadIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="size-3.5" fill="none" aria-hidden>
+      <path
+        d="M8 11.5V3.5m0 0L5 6.5M8 3.5l3 3M3 12.5h10"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /** Custom count marks (no emoji): a ringed check and a ringed cross in currentColor. */
 function MarkOk() {
   return (
@@ -337,6 +531,7 @@ function MarkBad() {
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   )

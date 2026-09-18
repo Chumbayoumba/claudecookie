@@ -45,8 +45,11 @@
   --ant-border: #1919181a;
   --ant-border-strong: #19191833;
   --ant-border-tool: #dad8d3;
-  --ant-pane-input: #fcfcfb;
-  --ant-pane-output: #f4f4f2;
+  --ant-pane-input: #f0efec;
+  --ant-pane-output: #f0efec;
+  --ant-pane-editor: #fcfcfb;
+  --ant-pane-editor-line: rgba(25, 25, 24, 0.1);
+  --ant-pane-editor-line-hover: rgba(25, 25, 24, 0.18);
   --ant-pane-input-line: #d4d2cc;
   --ant-accent: #c86648;
   --ant-accent-hover: #b5573c;
@@ -78,8 +81,11 @@
   --ant-border: #faf9f526;
   --ant-border-strong: #faf9f545;
   --ant-border-tool: #3f3e3a;
-  --ant-pane-input: #151513;
-  --ant-pane-output: #121211;
+  --ant-pane-input: #131311;
+  --ant-pane-output: #131311;
+  --ant-pane-editor: #171715;
+  --ant-pane-editor-line: rgba(255, 255, 255, 0.09);
+  --ant-pane-editor-line-hover: rgba(255, 255, 255, 0.16);
   --ant-pane-input-line: #4a4842;
   --ant-accent: #c86648;
   --ant-accent-hover: #d4785c;
@@ -121,6 +127,9 @@
   --color-line-tool: var(--ant-border-tool);
   --color-pane-input: var(--ant-pane-input);
   --color-pane-output: var(--ant-pane-output);
+  --color-pane-editor: var(--ant-pane-editor);
+  --color-pane-editor-line: var(--ant-pane-editor-line);
+  --color-pane-editor-line-hover: var(--ant-pane-editor-line-hover);
   --color-pane-input-line: var(--ant-pane-input-line);
   --color-surface-2: var(--ant-surface-2);
   --color-clay: var(--ant-accent);

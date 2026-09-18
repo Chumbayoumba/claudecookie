@@ -54,7 +54,7 @@ export function FormatBadge({
   else if (hasInput && format) {
     label = isGuess
       ? `${formatLabel} · ${dict.converter.detectedGuess}${countBit}`
-      : `${formatLabel} ${dict.converter.detected}${countBit}`
+      : `${formatLabel}${countBit}`
   }
 
   const state = !hasInput ? 'idle' : phase === 'detecting' ? 'detecting' : format ? 'found' : 'unknown'

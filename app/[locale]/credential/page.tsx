@@ -5,9 +5,8 @@ import { Terminal } from '@/components/guide/Terminal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { PageEnter } from '@/components/ui/PageEnter'
-import { Reveal } from '@/components/ui/Reveal'
 import { getDictionary } from '@/lib/i18n'
-import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
+import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
 import { buildBreadcrumbJsonLd, buildMetadata } from '@/lib/seo'
 
 const PATH = '/credential'
@@ -68,7 +67,7 @@ export default async function CredentialPage({ params }: PageProps) {
         </PageEnter>
       </section>
 
-      <section className="ant-container pb-8">
+      <section className="ant-container pb-16 lg:pb-20">
         <div className="mx-auto max-w-2xl">
           <Terminal
             title="claude credentials"
@@ -82,18 +81,6 @@ export default async function CredentialPage({ params }: PageProps) {
           />
         </div>
       </section>
-
-      <div className="ant-container pb-16 lg:pb-20">
-        <Reveal delay={0.1}>
-          <p className="max-w-[70ch] text-paragraph-xs text-ink-secondary">
-            {page.note}{' '}
-            <a href={localePath(locale, '/privacy')} className="ant-link text-ink hover:text-ink">
-              {dict.check.privacyLink}
-            </a>
-            .
-          </p>
-        </Reveal>
-      </div>
     </>
   )
 }

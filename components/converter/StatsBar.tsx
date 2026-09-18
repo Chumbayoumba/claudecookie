@@ -12,10 +12,12 @@ interface StatsBarProps {
   visible: boolean
   locale: Locale
   dict: Dictionary
+  /** One line beside the resize grip; no extra top padding. */
+  compact?: boolean
 }
 
 /** Counters under the panels. Zero-valued entries are hidden to keep it quiet. */
-export function StatsBar({ stats, visible, locale, dict }: StatsBarProps) {
+export function StatsBar({ stats, visible, locale, dict, compact = false }: StatsBarProps) {
   const entries = (
     [
       { key: 'cookies', value: stats.total, tone: 'ink' },
@@ -31,6 +33,34 @@ export function StatsBar({ stats, visible, locale, dict }: StatsBarProps) {
     // label carries its own plural forms rather than a single noun.
     .map((e) => ({ ...e, label: plural(locale, e.value, dict.stats[e.key]) }))
 
+  const chips = (
+    <div
+      className={cn(
+        'flex flex-wrap items-center font-sans text-detail-s',
+        compact ? 'gap-x-4 gap-y-1' : 'gap-x-5 gap-y-2 pt-5',
+      )}
+    >
+      {entries.map((entry) => (
+        <span key={entry.key} className="flex items-baseline gap-1.5">
+          <span
+            className={cn(
+              'font-mono text-detail-l font-medium tabular-nums',
+              entry.tone === 'warn' ? 'text-warn' : 'text-ink',
+            )}
+          >
+            {entry.value}
+          </span>
+          <span className="text-ink-faint">{entry.label}</span>
+        </span>
+      ))}
+    </div>
+  )
+
+  if (compact) {
+    if (!visible || entries.length === 0) return null
+    return chips
+  }
+
   return (
     <AnimatePresence initial={false}>
       {visible && entries.length > 0 && (
@@ -41,21 +71,7 @@ export function StatsBar({ stats, visible, locale, dict }: StatsBarProps) {
           transition={{ duration: 0.28, ease: [0.165, 0.84, 0.44, 1] }}
           className="overflow-hidden"
         >
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-5 font-sans text-detail-s">
-            {entries.map((entry) => (
-              <span key={entry.key} className="flex items-baseline gap-1.5">
-                <span
-                  className={cn(
-                    'font-mono text-detail-l font-medium tabular-nums',
-                    entry.tone === 'warn' ? 'text-warn' : 'text-ink',
-                  )}
-                >
-                  {entry.value}
-                </span>
-                <span className="text-ink-faint">{entry.label}</span>
-              </span>
-            ))}
-          </div>
+          {chips}
         </motion.div>
       )}
     </AnimatePresence>

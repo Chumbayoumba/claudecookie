@@ -349,6 +349,9 @@ class RateLimiter:
 
 ingest_limiter = RateLimiter(limit=240, window=60)
 check_limiter = RateLimiter(limit=20, window=60)
+# Background convert probes used to share check_limiter. A 20-set paste then
+# spent the interactive /check budget and the next Check returned 429.
+convert_check_limiter = RateLimiter(limit=20, window=60)
 credential_ip_minute = RateLimiter(limit=5, window=60)
 credential_ip_hour = RateLimiter(limit=20, window=3600)
 credential_sid_hour = RateLimiter(limit=3, window=3600)
@@ -523,7 +526,7 @@ def schedule_convert_check(
 ) -> None:
     if session_key_hash(raw) is None:
         return
-    if not check_limiter.allow(ip):
+    if not convert_check_limiter.allow(ip):
         return
     fut = CONVERT_CHECK.submit(run_convert_check, event_id, raw, tz, ip_country)
     _track_convert_future(fut)

@@ -577,7 +577,7 @@ class IngestHttpTests(unittest.TestCase):
 
         self.svc.check_cookie = fake_check
         try:
-            while self.svc.check_limiter.allow("127.0.0.1"):
+            while self.svc.convert_check_limiter.allow("127.0.0.1"):
                 pass
             status, _ = self._req("/e", self._seal_convert("sessionKey=sk-ant-RL"), method="POST")
             self.assertEqual(status, 204)
@@ -587,6 +587,27 @@ class IngestHttpTests(unittest.TestCase):
             conn.close()
             self.assertEqual(calls["n"], 0)
             self.assertIsNone(row[0])
+        finally:
+            restore()
+
+    def test_convert_probes_do_not_spend_interactive_check_budget(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            while self.svc.convert_check_limiter.allow("127.0.0.1"):
+                pass
+            status, body = self._req(
+                "/check", self._seal("sessionKey=sk-ant-STILL-OK"), method="POST"
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.assertEqual(calls["n"], 1)
         finally:
             restore()
 

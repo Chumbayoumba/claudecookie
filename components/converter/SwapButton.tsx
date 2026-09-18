@@ -27,9 +27,9 @@ export function SwapButton({ onSwap, disabled, label }: SwapButtonProps) {
       title={label}
       className={cn(
         'grid size-9 shrink-0 cursor-pointer place-items-center rounded-round',
-        'border border-line-tool bg-surface text-ink',
+        'border border-line-tool bg-surface-2 text-ink',
         'transition-[background-color,border-color,opacity] duration-[180ms] ease-ant',
-        'hover:bg-surface-hover',
+        'hover:bg-bg-tertiary',
         'disabled:pointer-events-none disabled:opacity-35',
       )}
     >

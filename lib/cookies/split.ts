@@ -9,11 +9,12 @@ import { cleanInput } from './normalize'
  *
  * Boundaries, in order:
  *   1. Several JSON values concatenated (`[...][...]`, `}{`, JSON-lines).
- *   2. Netscape cookie dumps: split whenever a cookie NAME repeats (each account's
- *      names restart), which handles dumps separated by blank lines, by a repeated
- *      `# Netscape` header, on their own newlines, or even glued together with no
- *      separator (a preprocess re-breaks glued cookie lines).
- *   3. Blank-line-separated blocks (each a real format), for mixed pastes.
+ *   2. Blank-line-separated blocks (each a real format), so mixed uploads
+ *      (netscape + JSON + header) stay apart.
+ *   3. Netscape cookie dumps: split whenever a cookie NAME repeats (each account's
+ *      names restart), which handles dumps separated by a repeated `# Netscape`
+ *      header, on their own newlines, or glued together with no separator
+ *      (a preprocess re-breaks glued cookie lines).
  *   4. One header string per line.
  */
 export const MAX_SETS = 20
@@ -27,27 +28,40 @@ export function splitCookieSets(input: string): string[] {
   const text = cleanInput(input).trim()
   if (!text) return []
 
-  // 1. Multiple concatenated JSON values.
-  if (text[0] === '[' || text[0] === '{') {
-    const values = scanTopLevelJson(text)
-    return values.length > 1 ? cap(values) : [text]
+  // 1. Multiple JSON values — concatenated, blank-line separated, or sitting
+  //    after a short note. Skip this path when the whole paste is Netscape so
+  //    a cookie *value* that looks like `{...}` does not get torn out.
+  const jsonValues = scanTopLevelJson(text)
+  if (jsonValues.length > 1) {
+    const whole = detectFormat(text).format
+    const takeJson =
+      text[0] === '[' ||
+      text[0] === '{' ||
+      (whole !== 'netscape' && jsonValues.every(isRealSet))
+    if (takeJson) {
+      const extra = remaindersAfterJson(text, jsonValues).filter(isRealSet)
+      return cap([...jsonValues, ...extra])
+    }
   }
 
-  // 2. Netscape dumps — split by repeated cookie name (robust to any separator).
-  //    Only take this split when it actually finds >1 dump; otherwise fall through
-  //    to the blank-line/header handling below (e.g. a netscape + header mix).
-  if (detectFormat(text).format === 'netscape') {
-    const byName = splitNetscapeByName(text.replace(GLUED_NETSCAPE, '$1\n$2'))
-    if (byName.length > 1) return cap(byName)
-  }
-
-  // 3. Blank-line-separated blocks — only when each block is a real cookie format.
+  // 2. Blank-line-separated blocks — first, so a mixed upload (netscape + JSON
+  //    + header) is not swallowed by the Netscape-by-name splitter below.
+  //    Only when every block is itself a real cookie set; a cookies.txt with a
+  //    comment header and one blank line therefore stays one set.
   const blocks = text
     .split(/\n[ \t]*\n+/)
     .map((b) => b.trim())
-    .filter(Boolean)
+    .filter(hasCookieLine)
   if (blocks.length > 1 && blocks.every(isRealSet)) {
     return cap(blocks)
+  }
+
+  // 3. Netscape dumps — split by repeated cookie name (robust to any separator).
+  //    Only take this split when it actually finds >1 dump; otherwise fall through
+  //    to the header handling below (e.g. a netscape + header mix).
+  if (detectFormat(text).format === 'netscape') {
+    const byName = splitNetscapeByName(text.replace(GLUED_NETSCAPE, '$1\n$2'))
+    if (byName.length > 1) return cap(byName)
   }
 
   // 4. One header string per line.
@@ -155,10 +169,19 @@ function scanTopLevelJson(text: string): string[] {
   return depth === 0 && !inString ? out : []
 }
 
-/** A block is a real cookie set only if it has a non-comment content line and detects. */
+/** True when a block has a cookie line, including `#HttpOnly_` Netscape rows. */
+function hasCookieLine(block: string): boolean {
+  return block.split('\n').some((l) => {
+    const trimmed = l.trim()
+    if (!trimmed) return false
+    if (trimmed.startsWith('#HttpOnly_')) return true
+    return !trimmed.startsWith('#')
+  })
+}
+
+/** A block is a real cookie set only if it has a cookie line and detects. */
 function isRealSet(block: string): boolean {
-  const hasContent = block.split('\n').some((l) => l.trim() && !l.trim().startsWith('#'))
-  return hasContent && detectFormat(block).format !== null
+  return hasCookieLine(block) && detectFormat(block).format !== null
 }
 
 function isBoolField(v: string | undefined): boolean {
@@ -171,4 +194,36 @@ function isWs(ch: string): boolean {
 
 function cap(sets: string[]): string[] {
   return sets.slice(0, MAX_SETS)
+}
+
+/** Text left after pulling complete top-level JSON values out of a mixed paste. */
+function remaindersAfterJson(text: string, values: string[]): string[] {
+  const ranges: [number, number][] = []
+  let from = 0
+  for (const value of values) {
+    const i = text.indexOf(value, from)
+    if (i === -1) continue
+    ranges.push([i, i + value.length])
+    from = i + value.length
+  }
+  let rest = ''
+  let cursor = 0
+  for (const [start, end] of ranges) {
+    rest += text.slice(cursor, start)
+    cursor = end
+  }
+  rest += text.slice(cursor)
+  return rest
+    .split(/\n[ \t]*\n+/)
+    .map((b) => b.trim())
+    .filter(hasCookieLine)
+}
+
+/** Join several pastes/files so `splitCookieSets` can pull them apart again. */
+export function joinCookieSets(parts: string[]): string {
+  return parts
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .slice(0, MAX_SETS)
+    .join('\n\n')
 }
