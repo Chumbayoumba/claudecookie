@@ -5,7 +5,7 @@ import { Terminal } from '@/components/guide/Terminal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { getDictionary } from '@/lib/i18n'
-import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
+import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
 import { buildBreadcrumbJsonLd, buildCheckJsonLd, buildMetadata } from '@/lib/seo'
 
 const PATH = '/check'
@@ -67,6 +67,12 @@ export default async function CheckPage({ params }: PageProps) {
 
       <section className="ant-container pt-8 pb-12 lg:pt-10 lg:pb-16">
         <CheckIntro locale={locale} dict={dict} />
+        <p className="mt-6 max-w-3xl font-sans text-detail-s text-ink-secondary">
+          {dict.check.apiHint}{' '}
+          <a href={localePath(locale, '/api')} className="ant-link text-ink">
+            {dict.check.apiHintLink}
+          </a>
+        </p>
       </section>
 
       <section className="ant-container pb-16 lg:pb-20">

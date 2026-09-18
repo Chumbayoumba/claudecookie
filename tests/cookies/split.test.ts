@@ -65,7 +65,7 @@ describe('splitCookieSets', () => {
   })
 
   it('never returns more than MAX_SETS', () => {
-    const many = Array.from({ length: 30 }, () => HEADER).join('\n')
+    const many = Array.from({ length: 50 }, () => HEADER).join('\n')
     expect(splitCookieSets(many)).toHaveLength(MAX_SETS)
   })
 
@@ -100,6 +100,13 @@ describe('splitCookieSets', () => {
     expect(splitCookieSets(joinCookieSets(files))).toHaveLength(10)
   })
 
+  it('keeps a 40-file paste as 40 sets', () => {
+    const files = Array.from({ length: 40 }, (_, i) =>
+      `.example.com\tTRUE\t/\tTRUE\t${FUTURE}\tsessionKey\tsk-ant-${i}`,
+    )
+    expect(splitCookieSets(joinCookieSets(files))).toHaveLength(40)
+  })
+
   it('keeps a trailing Netscape dump after concatenated JSON', () => {
     expect(splitCookieSets(`${COOKIE_EDITOR}\n${PUPPETEER}\n\n${NETSCAPE_BASIC}`)).toHaveLength(3)
   })
@@ -113,7 +120,7 @@ describe('joinCookieSets', () => {
 
   it('drops empty parts and caps at MAX_SETS', () => {
     expect(joinCookieSets(['', '  ', COOKIE_EDITOR])).toBe(COOKIE_EDITOR)
-    const many = Array.from({ length: 25 }, () => HEADER)
+    const many = Array.from({ length: 50 }, () => HEADER)
     expect(splitCookieSets(joinCookieSets(many))).toHaveLength(MAX_SETS)
   })
 })

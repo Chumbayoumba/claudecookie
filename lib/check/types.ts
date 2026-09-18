@@ -22,3 +22,6 @@ export type InvalidReason =
   | 'rate_limited'
   | 'captcha_failed'
   | 'convert_failed'
+  | 'reauth'
+  | 'no_refresh'
+  | 'no_plan'

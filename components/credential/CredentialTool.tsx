@@ -1,7 +1,8 @@
 'use client'
 
 import { AnimatePresence, motion } from 'motion/react'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
+import { canStartGenerate, shouldMountTurnstile } from '@/lib/credential/panel'
 import { CheckingBar } from '@/components/check/CheckingBar'
 import { CheckReport } from '@/components/check/Checker'
 import { TrustRow } from '@/components/check/TrustRow'
@@ -10,6 +11,7 @@ import { TurnstileBox } from '@/components/credential/TurnstileBox'
 import { Button } from '@/components/ui/Button'
 import { Pill } from '@/components/ui/Pill'
 import { sealJson } from '@/lib/box'
+import { postChecks } from '@/lib/check/request'
 import { isSiteSample } from '@/lib/cookies/samples'
 import { splitCookieSets } from '@/lib/cookies/split'
 import { metrikaGoal } from '@/lib/analytics'
@@ -58,37 +60,21 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
   const [convertError, setConvertError] = useState<string | null>(null)
   const [file, setFile] = useState<CredentialFile | null>(null)
   const [copied, setCopied] = useState(false)
+  const generateLock = useRef(false)
+  const pendingRef = useRef<number | null>(null)
 
   async function onCheck(e: FormEvent) {
     e.preventDefault()
     setFailed(false)
     setFile(null)
     setConvertError(null)
-    setPending(null)
+    closeGenerate()
     setBusy(true)
     metrikaGoal('credential_started')
     try {
-      const tz = await timezone()
       const chunks = splitCookieSets(value)
-      let out: CheckResult[]
-      if (chunks.length > 1) {
-        const box = await sealJson({ cookies: chunks, l: locale, tz })
-        const response = await fetch('/check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(box),
-        })
-        const data = (await response.json()) as { results?: CheckResult[] }
-        out = Array.isArray(data.results) ? data.results : []
-      } else {
-        const box = await sealJson({ cookie: value, l: locale, tz })
-        const response = await fetch('/check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(box),
-        })
-        out = [(await response.json()) as CheckResult]
-      }
+      const source = chunks.length > 0 ? chunks : [value]
+      const out = await postChecks(source, locale)
       if (out.length === 0) {
         setResults(null)
         setSets([])
@@ -109,8 +95,13 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
     }
   }
 
-  function onCancel() {
+  function closeGenerate() {
+    pendingRef.current = null
     setPending(null)
+  }
+
+  function onCancel() {
+    closeGenerate()
     setConvertError(null)
     setFile(null)
     setResults(null)
@@ -124,13 +115,15 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
   }
 
   async function onCaptcha(token: string) {
-    if (pending === null || converting) return
-    const raw = sets[pending] ?? value
+    const index = pendingRef.current
+    if (!canStartGenerate(index, generateLock.current)) return
+    const raw = sets[index] ?? value
     if (isSiteSample(raw)) {
       setConvertError(reasonText(dict, 'empty'))
-      setPending(null)
+      closeGenerate()
       return
     }
+    generateLock.current = true
     setConverting(true)
     setConvertError(null)
     try {
@@ -154,6 +147,7 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
       }
       if (!data.ok || !data.credentials) {
         setConvertError(reasonText(dict, data.invalidReason))
+        closeGenerate()
         metrikaGoal('credential_failed')
         return
       }
@@ -161,13 +155,15 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
         filename: data.filename || '.credentials.json',
         text: `${JSON.stringify(data.credentials, null, 2)}\n`,
       })
-      setPending(null)
+      closeGenerate()
       metrikaGoal('credential_converted')
     } catch {
       setConvertError(reasonText(dict))
+      closeGenerate()
       metrikaGoal('credential_failed')
     } finally {
       setConverting(false)
+      generateLock.current = false
     }
   }
 
@@ -321,14 +317,21 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
                         <p className="mb-4 text-paragraph-xs text-ink-secondary">
                           {converting ? dict.credential.converting : dict.credential.captchaHint}
                         </p>
-                        {!converting ? (
+                        {shouldMountTurnstile(converting, convertError) ? (
                           <TurnstileBox
                             onToken={(token) => void onCaptcha(token)}
-                            onError={() => setConvertError(reasonText(dict, 'captcha_failed'))}
+                            onError={() => {
+                              setConvertError(reasonText(dict, 'captcha_failed'))
+                              closeGenerate()
+                            }}
                           />
                         ) : null}
                         <div className="mt-4">
-                          <Button type="button" variant="ghost" onClick={() => setPending(null)}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => closeGenerate()}
+                          >
                             {dict.credential.cancel}
                           </Button>
                         </div>
@@ -340,8 +343,10 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
                           variant="accent"
                           disabled={converting || pending !== null}
                           onClick={() => {
+                            generateLock.current = false
                             setFile(null)
                             setConvertError(null)
+                            pendingRef.current = index
                             setPending(index)
                           }}
                         >

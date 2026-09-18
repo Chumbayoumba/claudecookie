@@ -49,6 +49,7 @@ python3 -c 'import curl_cffi'
 
 echo "==> Application code"
 install -o root -g root -m 0644 "$SCRIPT_DIR/stats_service.py" "$APP_DIR/stats_service.py"
+install -o root -g root -m 0644 "$SCRIPT_DIR/cookie_convert.py" "$APP_DIR/cookie_convert.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/claude_check.py"  "$APP_DIR/claude_check.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/claude_oauth.py"  "$APP_DIR/claude_oauth.py"
 install -o root -g root -m 0644 "$SCRIPT_DIR/turnstile.py"     "$APP_DIR/turnstile.py"
@@ -88,6 +89,11 @@ if curl -fsS --max-time 5 http://127.0.0.1:8787/api/health >/dev/null; then
   echo "    ingest up on 127.0.0.1:8787"
 else
   echo "    WARNING: ingest health failed — journalctl -u claudecookie-ingest -n 30" >&2
+fi
+if curl -fsS --max-time 5 http://127.0.0.1:8787/api/v1/health >/dev/null; then
+  echo "    public API health up"
+else
+  echo "    WARNING: /api/v1/health failed — journalctl -u claudecookie-ingest -n 30" >&2
 fi
 systemctl is-active claudecookie-bot >/dev/null && echo "    bot active" || \
   echo "    WARNING: bot not active — journalctl -u claudecookie-bot -n 30" >&2

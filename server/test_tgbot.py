@@ -235,13 +235,27 @@ class TgbotTests(unittest.TestCase):
         conn = self._conn()
         self._event(conn, "convert", valid=None, output="from-convert")
         self._event(conn, "check", valid=0, output="from-check")
+        self._event(conn, "credential", valid=1, output="from-credential")
         conn.commit()
         sent = self._capture_docs()
         toast = self.bot.download_pipeline(conn, 1, "all", "zip")
         conn.close()
         self.assertTrue(toast.startswith("Отправлено"))
         with zipfile.ZipFile(io.BytesIO(sent[0]["content"])) as z:
-            self.assertEqual(len(z.namelist()), 2)
+            self.assertEqual(len(z.namelist()), 3)
+
+    def test_credential_zip_joins_the_valid_pile(self) -> None:
+        conn = self._conn()
+        info = json.dumps({"email": "ada@example.com", "plan": "Claude Pro"})
+        self._event(conn, "credential", valid=1, info=info, output="sessionKey=sk-ant-CRED")
+        conn.commit()
+        sent = self._capture_docs()
+        toast = self.bot.download_pipeline(conn, 1, "valid", "zip")
+        conn.close()
+        self.assertTrue(toast.startswith("Отправлено"))
+        with zipfile.ZipFile(io.BytesIO(sent[0]["content"])) as z:
+            self.assertEqual(z.namelist(), ["ada-pro-valid.txt"])
+            self.assertEqual(z.read("ada-pro-valid.txt").decode(), "sessionKey=sk-ant-CRED")
 
     def test_download_txt_one_line_per_set(self) -> None:
         netscape = (

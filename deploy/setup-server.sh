@@ -72,6 +72,8 @@ fi
 
 chmod 0644 /etc/nginx/conf.d/00-geo.conf
 install -m 0644 "$SCRIPT_DIR/security-headers.conf" /etc/nginx/snippets/claudecookie-security.conf
+install -m 0644 "$SCRIPT_DIR/security-headers-api.conf" /etc/nginx/snippets/claudecookie-security-api.conf
+install -m 0644 "$SCRIPT_DIR/00-api-limit.conf" /etc/nginx/conf.d/00-api-limit.conf
 
 echo "==> Bringing the site up over HTTP"
 # The production config references certificates that may not exist yet, so serve

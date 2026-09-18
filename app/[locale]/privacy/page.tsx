@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils/cn'
 const PATH = '/privacy'
 
 /** Bumped by hand when the policy text changes, not on every deploy. */
-const LAST_UPDATED = '2026-09-17'
+const LAST_UPDATED = '2026-09-18'
 
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }))

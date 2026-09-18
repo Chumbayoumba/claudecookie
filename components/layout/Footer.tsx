@@ -29,6 +29,7 @@ export function Footer({ locale, dict }: FooterProps) {
     {
       title: dict.footer.docs,
       links: [
+        { href: localePath(locale, '/api'), label: dict.nav.api },
         {
           href: localePath(locale, '/formats/netscape-cookies-txt'),
           label: dict.nav.netscapeFormat,

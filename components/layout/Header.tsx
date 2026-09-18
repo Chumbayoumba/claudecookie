@@ -38,6 +38,7 @@ export function Header({ locale, dict }: HeaderProps) {
   }, [menuOpen])
 
   const docs = [
+    { href: localePath(locale, '/api'), label: dict.nav.api },
     { href: localePath(locale, '/formats/netscape-cookies-txt'), label: dict.nav.netscapeFormat },
     { href: localePath(locale, '/formats/json-cookies'), label: dict.nav.jsonFormat },
     { href: localePath(locale, '/privacy'), label: dict.nav.privacy },

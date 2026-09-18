@@ -17,6 +17,8 @@ export interface TurnstileApi {
       callback?: (token: string) => void
       'error-callback'?: () => void
       'expired-callback'?: () => void
+      retry?: 'auto' | 'never'
+      'refresh-expired'?: 'auto' | 'manual' | 'never'
     },
   ) => string
   reset: (widgetId?: string) => void

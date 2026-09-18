@@ -130,6 +130,32 @@ class ExtractTests(unittest.TestCase):
         self.assertIn("sessionKeyLC=123", header)
         self.assertIn("anthropic-device-id=dev-1", header)
 
+    def test_cookie_editor_httponly_netscape(self) -> None:
+        text = (
+            "# Netscape HTTP Cookie File\n"
+            "#HttpOnly_.claude.ai\tTRUE\t/\tTRUE\t9999999999\tsessionKey\tsk-ant-sid02-HTTPONLY\n"
+            "# this is a comment with sessionKey\tskipped\n"
+            ".claude.ai\tTRUE\t/\tTRUE\t9999999999\tlastActiveOrg\torg-ho\n"
+        )
+        fields = cc.extract_fields(text)
+        self.assertEqual(fields["sessionKey"], "sk-ant-sid02-HTTPONLY")
+        self.assertEqual(fields["lastActiveOrg"], "org-ho")
+        self.assertEqual(cc.session_auth_header(fields), "sessionKey=sk-ant-sid02-HTTPONLY")
+        self.assertTrue(
+            cc._has_content(
+                "# Netscape HTTP Cookie File\n"
+                "#HttpOnly_.claude.ai\tTRUE\t/\tTRUE\t1\tsessionKey\tsk-ant-sid02-HTTPONLY"
+            )
+        )
+
+    def test_session_auth_header_is_one_key(self) -> None:
+        fields = cc.extract_fields(NETSCAPE)
+        self.assertEqual(cc.session_auth_header(fields), "sessionKey=sk-ant-sid02-TESTONLY")
+        self.assertEqual(
+            cc.session_auth_header({"sessionKeyV3": "sk-v3-only"}),
+            "sessionKeyV3=sk-v3-only",
+        )
+
 
 class PlanTests(unittest.TestCase):
     def test_pro(self) -> None:
@@ -422,6 +448,10 @@ class MiscTests(unittest.TestCase):
         self.assertEqual(headers["anthropic-client-platform"], "web_claude_ai")
         self.assertIn("priority", headers)
         self.assertEqual(headers["Origin"], "https://claude.ai")
+        self.assertEqual(headers["Cookie"], "sessionKey=x")
+        token = cc._request_headers("https://platform.claude.com/v1/oauth/token", "", None)
+        self.assertEqual(token["Origin"], "https://platform.claude.com")
+        self.assertNotIn("Cookie", token)
 
     def test_tz_to_country(self) -> None:
         self.assertEqual(cc.tz_to_country("Europe/Moscow"), "RU")
@@ -499,7 +529,7 @@ class SplitCookieSetsTest(unittest.TestCase):
         self.assertEqual(len(cc.split_cookie_sets(self.HDR + "\n" + self.HDR + "\n" + self.HDR)), 3)
 
     def test_cap(self) -> None:
-        many = "\n".join([self.HDR] * 30)
+        many = "\n".join([self.HDR] * 50)
         self.assertEqual(len(cc.split_cookie_sets(many)), cc.MAX_SETS)
 
     def test_each_set_is_checkable(self) -> None:

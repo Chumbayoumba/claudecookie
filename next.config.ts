@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
         { source: '/check/', destination: 'http://127.0.0.1:8787/check' },
         { source: '/credential', destination: 'http://127.0.0.1:8787/credential' },
         { source: '/credential/', destination: 'http://127.0.0.1:8787/credential' },
+        { source: '/api/v1/:path*', destination: 'http://127.0.0.1:8787/api/v1/:path*' },
+        { source: '/api/v1/:path*/', destination: 'http://127.0.0.1:8787/api/v1/:path*' },
       ],
     }
   },

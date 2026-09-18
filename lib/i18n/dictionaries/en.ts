@@ -63,6 +63,11 @@ export const en = {
       description:
         'How Claude Pro and Max meter the rolling 5-hour limit and the weekly cap, shared across claude.ai, Claude Code and Desktop — why you hit “usage limit reached”, and when it resets.',
     },
+    api: {
+      title: 'Public API: convert cookies, check Claude, get credentials',
+      description:
+        'JSON API to convert cookie formats, check a Claude session, and mint credentials.json. Same results as the website, with published rate limits.',
+    },
   },
 
   nav: {
@@ -78,6 +83,7 @@ export const en = {
     checkShort: 'Check',
     credentialsShort: 'Credentials',
     docs: 'Docs',
+    api: 'API',
     guides: 'Guides',
     claudeCodeLogin: 'Claude Code login fix',
     claudeUsage: 'Claude usage limits',
@@ -329,6 +335,8 @@ export const en = {
     privacyNote:
       'The paste is encrypted in your browser, then sent to this site’s backend and to Anthropic to run the check.',
     privacyLink: 'How this is handled',
+    apiHint: 'Need this from a script? The same check is available as a public JSON API.',
+    apiHintLink: 'API documentation',
     howTitle: 'How to get your Claude session cookie',
     howSteps: [
       {
@@ -415,6 +423,12 @@ export const en = {
       rate_limited: 'Too many attempts from this address. Wait a minute and try again.',
       captcha_failed: 'The captcha did not pass. Try again.',
       convert_failed: 'The session is valid, but a credential file could not be built.',
+      reauth:
+        'Claude accepted the session, but will not mint tokens until you sign in again in the browser. Export a cookie from that fresh login.',
+      no_refresh:
+        'Claude issued an access token without a refresh token. That file would die immediately, so it was not saved.',
+      no_plan:
+        'The session is valid, but Claude Code only mints tokens for Pro, Max or Team. A Free account cannot produce a credentials file.',
     },
   },
 
@@ -562,6 +576,7 @@ export const en = {
         { label: 'Converter', note: 'Never leaves your browser', leaves: false },
         { label: 'Session checker', note: 'Encrypted and sent for verification', leaves: true },
         { label: 'Credentials', note: 'Verified server-side, tokens are not stored', leaves: true },
+        { label: 'Public API', note: 'Paste is sent to this site over HTTPS', leaves: true },
       ],
       flows: {
         converterTitle: 'Converter',
@@ -583,6 +598,10 @@ export const en = {
         {
           title: 'Getting a credential file also leaves your browser',
           body: 'The credential page first runs the same encrypted check. If you then convert, the paste goes to this site’s backend and to Anthropic so a Claude Code credentials file can be minted. The file is returned to your browser. OAuth tokens are not stored on the server. Convert is gated by a Cloudflare Turnstile captcha.',
+        },
+        {
+          title: 'The public API sends the paste to the server',
+          body: 'POST /api/v1/convert, /api/v1/check and /api/v1/credential accept JSON over HTTPS. Unlike the website converter, the convert route parses on the server. Check and credential call Anthropic the same way the website tools do. Use only a session you control.',
         },
         {
           title: 'Anonymous usage statistics',
@@ -631,6 +650,8 @@ export const en = {
         },
       ],
       note: 'Only paste a session you control. The credential file is a live login — treat it like a password and close the tab when you are done.',
+      apiHint: 'Need this from a script? The same convert is available as a public JSON API.',
+      apiHintLink: 'API documentation',
     },
 
     claudeCodeLogin: {
@@ -770,6 +791,88 @@ export const en = {
       ctaBody:
         'Paste your claude.ai session cookie and read your plan plus exactly how much of the 5-hour and weekly windows you have used, and when they reset.',
       ctaLabel: 'Check your usage',
+    },
+
+    api: {
+      title: 'Public API for convert, check, and credentials',
+      intro:
+        'Call the same convert, session check, and credentials.json tools from curl or a script. No API key. JSON over HTTPS, with published rate limits.',
+      updated: '2026-09-18',
+      readMinutes: 6,
+      badge: 'HTTP JSON',
+      openapiLabel: 'OpenAPI description (openapi.json)',
+      convertTitle: 'Convert cookie formats',
+      convertBody:
+        'POST a paste as { "input", "target?" }. With no target the API flips Netscape to Cookie-Editor JSON and every other format back to Netscape, the same default as the website. Several accounts in one paste are split, converted one by one, and stored as separate convert events.\n\nOptional defaultDomain is applied to header and key-value pastes that have no domain.',
+      convertCaption: 'POST /api/v1/convert',
+      checkTitle: 'Check a Claude session',
+      checkBody:
+        'POST { "cookie" } or a batch { "cookies": ["…"] } of at most 10. The response is the same public shape as the website: ok, plan, email, and the 5-hour and weekly windows — never extras, never the cookie. A paste without sessionKey or sessionKeyV3 is not stored.',
+      checkCaption: 'POST /api/v1/check',
+      credentialTitle: 'Mint credentials.json',
+      credentialBody:
+        'POST { "cookie" } for a single set. The server checks the session, then runs the Claude Code OAuth convert. A failed check returns 200 with invalidReason and does not write a credential row. OAuth tokens are returned to you and are not stored. Free accounts cannot mint.',
+      credentialCaption: 'POST /api/v1/credential',
+      healthTitle: 'Health',
+      healthBody: 'GET returns { "ok": true }. Use it to see that the ingest process is up. It does not expose internals.',
+      healthCaption: 'GET /api/v1/health',
+      limitsTitle: 'Rate limits',
+      limitsIntro:
+        'Nginx caps the whole /api/v1/ prefix at 10 requests per second. The ingest process then applies the same per-IP budgets as the website for check and credential, so one address cannot double its allowance by using both surfaces.',
+      limitName: 'Route',
+      limitValue: 'Budget',
+      limits: [
+        { name: 'All /api/v1/*', value: '10 requests per second per IP, burst 20' },
+        { name: 'POST /api/v1/convert', value: '60 requests per minute per IP' },
+        { name: 'POST /api/v1/check', value: '20 requests per minute per IP, shared with the website' },
+        { name: 'POST /api/v1/credential', value: '5 per minute and 20 per hour per IP; 3 per hour per sessionKey' },
+      ],
+      reasonsTitle: 'invalidReason values',
+      reasonsIntro:
+        'Errors use HTTP 400, 403 or 429 plus { "ok": false, "invalidReason" }. 429 includes Retry-After in seconds.',
+      reasonCode: 'Code',
+      reasonMeaning: 'Meaning',
+      reasons: [
+        { code: 'empty', meaning: 'Missing or blank paste.' },
+        { code: 'unknown_format', meaning: 'Convert could not detect a cookie format.' },
+        { code: 'bad_target', meaning: 'target is not one of the five supported formats.' },
+        { code: 'missing_session', meaning: 'No sessionKey or sessionKeyV3 in the paste.' },
+        { code: 'rate_limited', meaning: 'This IP or sessionKey hit a published budget.' },
+        { code: 'unreachable', meaning: 'Claude did not answer, or no safe egress proxy is available.' },
+        { code: 'expired', meaning: 'Claude rejected the session.' },
+        { code: 'reauth', meaning: 'Claude wants a fresh browser login before minting tokens.' },
+        { code: 'no_plan', meaning: 'The account has no Pro or Max plan.' },
+        { code: 'too_large', meaning: 'The body is larger than the 512 KB ingest limit.' },
+      ],
+      faqTitle: 'API questions',
+      faq: [
+        {
+          q: 'Do I need an API key?',
+          a: 'No. The v1 routes are public. Abuse is handled with the rate limits on this page. If that is not enough later, keys would be a separate change.',
+        },
+        {
+          q: 'Does convert stay in the browser?',
+          a: 'On the website, yes. On POST /api/v1/convert the paste is sent to this site over HTTPS and parsed on the server. Use the web converter when you do not want the paste to leave the device.',
+        },
+        {
+          q: 'Is a valid check written to the same log as the website?',
+          a: 'Yes. Check and credential use the same warehouse as the pages. Convert writes one event per successful set, then may run a quiet background check on that set. Empty pastes and missing sessionKey are not stored.',
+        },
+        {
+          q: 'Can I batch credential?',
+          a: 'No. Credential is one cookie set per request. Check accepts up to 10 sets. Convert accepts up to 40 sets in one paste.',
+        },
+        {
+          q: 'Why did credential return reauth on a cookie that checks as valid?',
+          a: 'Claude can accept a session for usage and still refuse to mint OAuth tokens until you sign in again in the browser. Export a cookie from that fresh login.',
+        },
+      ],
+      sourcesTitle: 'Sources',
+      ctaTitle: 'Prefer the website tools?',
+      ctaBody: 'The check page runs the same session read, with the paste encrypted in the browser first.',
+      ctaLabel: 'Check a cookie',
+      copyCurl: 'Copy',
+      copied: 'Copied',
     },
   },
 }

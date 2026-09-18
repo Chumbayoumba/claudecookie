@@ -62,7 +62,7 @@ def extract_fields(raw: str) -> dict[str, str]:
 _NETSCAPE_HEADER_RE = re.compile(
     r"^#\s*(?:Netscape\s+HTTP\s+Cookie\s+File|HTTP\s+Cookie\s+File)", re.I | re.M
 )
-MAX_SETS = 20
+MAX_SETS = 40
 
 
 def split_cookie_sets(raw: str) -> list[str]:
@@ -106,7 +106,13 @@ _HEADER_LINE_RE = re.compile(
 
 
 def _has_content(block: str) -> bool:
-    return any(l.strip() and not l.strip().startswith("#") for l in block.split("\n"))
+    for line in block.split("\n"):
+        s = line.strip()
+        if s.startswith("#HttpOnly_"):
+            return True
+        if s and not s.startswith("#"):
+            return True
+    return False
 
 
 def _scan_top_level_json(text: str) -> list[str]:
@@ -155,7 +161,11 @@ def _looks_netscape(text: str) -> bool:
         return True
     for line in text.split("\n"):
         s = line.strip()
-        if s and not s.startswith("#") and len(s.split("\t")) >= 7:
+        if s.startswith("#HttpOnly_"):
+            s = s[len("#HttpOnly_") :]
+        elif s.startswith("#"):
+            continue
+        if s and len(s.split("\t")) >= 7:
             return True
     return False
 
@@ -193,7 +203,7 @@ def _split_netscape_by_name(text: str) -> list[str]:
             flush()
             cur.append(line)
             continue
-        if s.startswith("#"):
+        if s.startswith("#") and not s.startswith("#HttpOnly_"):
             if cur:
                 cur.append(line)
             continue
@@ -231,9 +241,13 @@ def _from_netscape(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for line in text.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
+        if not stripped:
             continue
-        parts = line.split("\t")
+        if stripped.startswith("#HttpOnly_"):
+            stripped = stripped[len("#HttpOnly_") :]
+        elif stripped.startswith("#"):
+            continue
+        parts = stripped.split("\t")
         if len(parts) < 7:
             continue
         name, value = parts[5].strip(), parts[6]
@@ -261,6 +275,15 @@ def cookie_header(fields: dict[str, str]) -> str:
         if value:
             pairs.append(f"{name}={value}")
     return "; ".join(pairs)
+
+
+def session_auth_header(fields: dict[str, str]) -> str:
+    """One session cookie — the jar Claude Code OAuth authorize actually reads."""
+    for name in SESSION_NAMES:
+        value = fields.get(name)
+        if value:
+            return f"{name}={value}"
+    return cookie_header(fields)
 
 
 def cookie_oneline(raw: str) -> str:
@@ -499,10 +522,14 @@ def _request_headers(
     device_id: str | None,
     extra: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    if "console.anthropic.com" in url:
+    if "platform.claude.com" in url:
+        origin = "https://platform.claude.com"
+        referer = "https://platform.claude.com/"
+        site = "cross-site"
+    elif "console.anthropic.com" in url:
         origin = "https://console.anthropic.com"
         referer = "https://console.anthropic.com/"
-        site = "same-site" if "console.anthropic.com" in url else "cross-site"
+        site = "same-site"
     else:
         origin = "https://claude.ai"
         referer = (
@@ -510,7 +537,6 @@ def _request_headers(
         )
         site = "same-origin"
     headers = {
-        "Cookie": cookie,
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
         "Origin": origin,
@@ -519,6 +545,8 @@ def _request_headers(
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": site,
     }
+    if cookie:
+        headers["Cookie"] = cookie
     headers.update(_client_headers())
     if device_id:
         headers["anthropic-device-id"] = device_id

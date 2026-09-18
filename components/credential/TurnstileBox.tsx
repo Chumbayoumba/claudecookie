@@ -35,6 +35,8 @@ export function TurnstileBox({ onToken, onError }: TurnstileBoxProps) {
           callback: (token) => tokenRef.current(token),
           'error-callback': () => errorRef.current(),
           'expired-callback': () => errorRef.current(),
+          retry: 'never',
+          'refresh-expired': 'never',
         })
       })
       .catch(() => {

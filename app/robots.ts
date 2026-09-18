@@ -15,7 +15,7 @@ export default function robots(): MetadataRoute.Robots {
         // text) and the POST-only ingest endpoints are not content. `/check`
         // is deliberately NOT disallowed - a crawler must still reach the
         // static page at `/check/`, and a `/check` prefix rule would block it.
-        disallow: ['/index.txt', '/*/index.txt', '/e', '/box'],
+        disallow: ['/index.txt', '/*/index.txt', '/e', '/box', '/api/v1'],
       },
       // Named so a later Disallow under * cannot silently cut answer engines
       // or the Chinese search crawlers that have not hit the site yet.

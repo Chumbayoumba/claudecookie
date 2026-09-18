@@ -3,8 +3,8 @@ import { cleanInput } from './normalize'
 
 /**
  * Splits a paste that may contain several *separate* cookie sets into one string
- * per set, so 5–10 different exports pasted together can be parsed/checked/converted
- * one by one. Conservative: a single set (the common case) returns `[input]`, so the
+ * per set, so a paste of many accounts can be parsed/checked/converted one by one.
+ * Conservative: a single set (the common case) returns `[input]`, so the
  * existing single-set path is unchanged. Never returns more than `MAX_SETS` entries.
  *
  * Boundaries, in order:
@@ -17,7 +17,7 @@ import { cleanInput } from './normalize'
  *      (a preprocess re-breaks glued cookie lines).
  *   4. One header string per line.
  */
-export const MAX_SETS = 20
+export const MAX_SETS = 40
 
 const HEADER_LINE = /^\s*(?:(?:set-)?cookie\s*:\s*)?[^=;,\s]+=[^;]*(?:;\s*[^=;,\s]+=[^;]*)*$/i
 // A netscape cookie line glued onto the previous line: `<domain>\t(TRUE|FALSE)\t`

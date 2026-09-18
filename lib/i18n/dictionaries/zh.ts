@@ -42,6 +42,11 @@ export const zh: Dictionary = {
       description:
         'Claude Pro 与 Max 的限流怎么算：滚动 5 小时窗口和每周额度，在 claude.ai、Claude Code 和 Desktop 之间共享，为什么会「用量已达上限」，以及何时重置。',
     },
+    api: {
+      title: '公开 API：在线转换 Cookie、检测会话、生成凭证文件',
+      description:
+        'JSON API 可转换 Cookie 格式、检测 Claude 会话并生成 credentials.json。结果与网站相同，并公布速率限制。',
+    },
   },
 
   nav: {
@@ -57,6 +62,7 @@ export const zh: Dictionary = {
     checkShort: '检测',
     credentialsShort: '凭证',
     docs: '文档',
+    api: 'API',
     guides: '指南',
     claudeCodeLogin: 'Claude Code 登录修复',
     claudeUsage: 'Claude 用量限制',
@@ -314,6 +320,8 @@ export const zh: Dictionary = {
       'Netscape cookies.txt 导出、JSON Cookie 数组（Cookie-Editor 或 Puppeteer），或原始的 Cookie: 请求头。只需要 sessionKey / sessionKeyV3。',
     privacyNote: '粘贴内容会在浏览器中加密，再发到本站后端和 Anthropic 以完成检测。',
     privacyLink: '如何处理这些数据',
+    apiHint: '需要脚本调用？同一检测已作为公开 JSON API 提供。',
+    apiHintLink: 'API 文档',
     howTitle: '如何获取 Claude 会话 Cookie',
     howSteps: [
       {
@@ -400,6 +408,9 @@ export const zh: Dictionary = {
       rate_limited: '此地址尝试次数过多，请稍等一分钟再试。',
       captcha_failed: '验证未通过，请重试。',
       convert_failed: '会话有效，但无法生成凭证文件。',
+      reauth: '会话有效，但 Claude 要你先在浏览器里重新登录，再导出新的 Cookie。',
+      no_refresh: 'Claude 只给了 access token，没有 refresh token。这样的文件马上会失效，因此没有保存。',
+      no_plan: '会话有效，但 Claude Code 只给 Pro、Max 或 Team 发令牌。免费账号无法生成凭证文件。',
     },
   },
 
@@ -547,6 +558,7 @@ export const zh: Dictionary = {
         { label: '转换器', note: '不会离开你的浏览器', leaves: false },
         { label: '会话检测', note: '加密后发送以完成检测', leaves: true },
         { label: '凭证', note: '在服务端验证，不存储令牌', leaves: true },
+        { label: '公开 API', note: '粘贴内容经 HTTPS 发到本站', leaves: true },
       ],
       flows: {
         converterTitle: '转换器',
@@ -568,6 +580,10 @@ export const zh: Dictionary = {
         {
           title: '获取凭证文件同样会离开浏览器',
           body: '凭证页会先做同一次加密检测。如果你接着转换，内容会发到本站后端和 Anthropic，以便生成 Claude Code 凭证文件。文件回到你的浏览器。OAuth 令牌不会存在服务器上。转换前需通过 Cloudflare Turnstile 验证。',
+        },
+        {
+          title: '公开 API 会把粘贴内容发到服务器',
+          body: 'POST /api/v1/convert、/api/v1/check 和 /api/v1/credential 通过 HTTPS 接收 JSON。与网站转换器不同，convert 在服务器上解析。check 与 credential 访问 Anthropic 的方式与网站工具相同。请只粘贴你自己控制的会话。',
         },
         {
           title: '匿名使用统计',
@@ -616,6 +632,8 @@ export const zh: Dictionary = {
         },
       ],
       note: '只粘贴你自己掌控的会话。凭证文件是有效登录：像对待密码一样保管，用完后关闭标签页。',
+      apiHint: '需要脚本调用？同一转换已作为公开 JSON API 提供。',
+      apiHintLink: 'API 文档',
     },
 
     claudeCodeLogin: {
@@ -755,6 +773,88 @@ export const zh: Dictionary = {
       ctaBody:
         '粘贴你的 claude.ai 会话 Cookie，查看套餐以及 5 小时和每周窗口各用了多少、何时重置。',
       ctaLabel: '查看用量',
+    },
+
+    api: {
+      title: '公开 API：转换、检测与凭证',
+      intro:
+        '用 curl 或脚本调用同一套转换、会话检测和 credentials.json。无需密钥。HTTPS 上的 JSON，并公布速率限制。',
+      updated: '2026-09-18',
+      readMinutes: 6,
+      badge: 'HTTP JSON',
+      openapiLabel: 'OpenAPI 描述（openapi.json）',
+      convertTitle: '转换 Cookie 格式',
+      convertBody:
+        'POST { "input", "target?" }。不指定 target 时，Netscape 转为 Cookie-Editor JSON，其他格式转回 Netscape，与网站默认相同。一份粘贴里的多组账号会拆开、逐组转换，并分别记为 convert 事件。\n\n没有域名的 header 与 key-value 粘贴可传可选的 defaultDomain。',
+      convertCaption: 'POST /api/v1/convert',
+      checkTitle: '检测 Claude 会话',
+      checkBody:
+        'POST { "cookie" } 或最多 10 条的 { "cookies": ["…"] }。响应与网站公开字段相同：ok、套餐、邮箱以及 5 小时和每周窗口，不含 extras，也不回传 Cookie。没有 sessionKey 或 sessionKeyV3 的内容不会入库。',
+      checkCaption: 'POST /api/v1/check',
+      credentialTitle: '生成 credentials.json',
+      credentialBody:
+        'POST { "cookie" }，每次一组。服务器先检测会话，再走 Claude Code OAuth。检测失败返回 200 和 invalidReason，不写 credential 行。OAuth 令牌只回到你这边，不落库。免费账号无法生成。',
+      credentialCaption: 'POST /api/v1/credential',
+      healthTitle: '健康检查',
+      healthBody: 'GET 返回 { "ok": true }。用来确认 ingest 进程在线，不暴露内部状态。',
+      healthCaption: 'GET /api/v1/health',
+      limitsTitle: '速率限制',
+      limitsIntro:
+        'Nginx 把整个 /api/v1/ 前缀限制为每秒 10 个请求。ingest 再对 check 和 credential 套用与网站相同的按 IP 配额，同一个地址不能两边各用一份额度。',
+      limitName: '路由',
+      limitValue: '额度',
+      limits: [
+        { name: '全部 /api/v1/*', value: '每 IP 每秒 10 次，burst 20' },
+        { name: 'POST /api/v1/convert', value: '每 IP 每分钟 60 次' },
+        { name: 'POST /api/v1/check', value: '每 IP 每分钟 20 次，与网站共用' },
+        { name: 'POST /api/v1/credential', value: '每 IP 每分钟 5 次、每小时 20 次；每个 sessionKey 每小时 3 次' },
+      ],
+      reasonsTitle: 'invalidReason 取值',
+      reasonsIntro:
+        '错误为 HTTP 400、403 或 429，加上 { "ok": false, "invalidReason" }。429 带 Retry-After（秒）。',
+      reasonCode: '代码',
+      reasonMeaning: '含义',
+      reasons: [
+        { code: 'empty', meaning: '缺少或空白的粘贴内容。' },
+        { code: 'unknown_format', meaning: 'Convert 无法识别 Cookie 格式。' },
+        { code: 'bad_target', meaning: 'target 不是五种受支持格式之一。' },
+        { code: 'missing_session', meaning: '粘贴内容里没有 sessionKey 或 sessionKeyV3。' },
+        { code: 'rate_limited', meaning: '该 IP 或 sessionKey 达到已公布的额度。' },
+        { code: 'unreachable', meaning: 'Claude 未应答，或没有安全的出口代理。' },
+        { code: 'expired', meaning: 'Claude 拒绝了此会话。' },
+        { code: 'reauth', meaning: '在签发令牌前，Claude 要求你在浏览器中重新登录。' },
+        { code: 'no_plan', meaning: '该账号没有 Pro 或 Max 套餐。' },
+        { code: 'too_large', meaning: '请求体超过 ingest 的 512 KB 限制。' },
+      ],
+      faqTitle: 'API 常见问题',
+      faq: [
+        {
+          q: '需要 API 密钥吗？',
+          a: '不需要。v1 路由是公开的。滥用由本页的速率限制处理。若以后不够用，密钥会作为单独改动。',
+        },
+        {
+          q: '转换还在浏览器里完成吗？',
+          a: '在网站上是的。POST /api/v1/convert 会把内容经 HTTPS 发到本站并在服务器上解析。如果不希望内容离开设备，请用网页转换器。',
+        },
+        {
+          q: '有效检测会记入与网站相同的日志吗？',
+          a: '会。check 与 credential 使用和页面相同的仓库。convert 为每组成功结果写一条事件，并可能在后台静默检测。空内容和缺少 sessionKey 的不会入库。',
+        },
+        {
+          q: 'credential 能批量吗？',
+          a: '不能。credential 每次请求一组 Cookie。check 最多 10 组。convert 一份粘贴最多 40 组。',
+        },
+        {
+          q: '为什么检测有效，credential 却返回 reauth？',
+          a: 'Claude 可以接受会话来读取用量，但仍拒绝签发 OAuth 令牌，直到你在浏览器中重新登录。请从那次新登录导出 Cookie。',
+        },
+      ],
+      sourcesTitle: '参考来源',
+      ctaTitle: '更想用网页工具？',
+      ctaBody: '检测页做同一次会话读取，并先在浏览器中加密粘贴内容。',
+      ctaLabel: '检测 Cookie',
+      copyCurl: '复制',
+      copied: '已复制',
     },
   },
 }

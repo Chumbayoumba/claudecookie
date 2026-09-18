@@ -26,20 +26,54 @@ from claude_check import (
     extract_fields,
     org_ids_from,
     select_proxy,
+    session_auth_header,
 )
 
 # Public Claude Code OAuth client. Not a secret.
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-AUTHORIZE_API = "https://claude.ai/v1/oauth/{org}/authorize"
+AUTHORIZE_API = "https://platform.claude.com/v1/oauth/{org}/authorize"
+LEGACY_AUTHORIZE_API = "https://claude.ai/v1/oauth/{org}/authorize"
 ORGANIZATIONS_URL = "https://claude.ai/api/organizations"
-TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
-REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
-SCOPES = "user:inference user:profile"
+TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+API_TOKEN_URL = "https://api.anthropic.com/v1/oauth/token"
+REDIRECT_URI = "https://platform.claude.com/oauth/code/callback"
+LEGACY_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+LEGACY_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
+# Full Claude Code scopes. A session that is valid for chat but "not fresh
+# enough" for elevated grant fails this set; inference-only still mints.
+SCOPE_CODE = (
+    "user:profile user:inference user:sessions:claude_code "
+    "user:mcp_servers user:file_upload"
+)
+SCOPE_INFERENCE = "user:inference"
+SCOPES = SCOPE_CODE
 DEFAULT_SCOPE_LIST = ["user:inference", "user:profile"]
-AUTHORIZE_HEADERS = {
+CAI_AUTHORIZE_HEADERS = {
+    "Origin": "https://claude.com",
+    "Referer": "https://claude.com/cai/oauth/authorize?code=true",
+    "Cache-Control": "no-cache",
+    "Sec-Fetch-Site": "same-site",
+}
+WEB_AUTHORIZE_HEADERS = {
+    "Origin": "https://claude.ai",
     "Referer": "https://claude.ai/new",
     "Cache-Control": "no-cache",
 }
+AUTHORIZE_HEADERS = CAI_AUTHORIZE_HEADERS
+TOKEN_HEADERS = CAI_AUTHORIZE_HEADERS
+STALE_MARKERS = (
+    "session_stale",
+    "elevated",
+    "not fresh enough",
+    "sign in again",
+    "reauth",
+    "re-login",
+)
+NO_PLAN_MARKERS = (
+    "requires a pro or max",
+    "requires a pro",
+    "claude code requires",
+)
 
 SECRET_RE = re.compile(
     r"(sk-ant-[a-z0-9]+-[A-Za-z0-9_-]{8,}|sessionKey(?:V3)?=)[^\s\"'&]+",
@@ -70,7 +104,15 @@ def make_pkce() -> tuple[str, str, str]:
     return verifier, challenge, state
 
 
-def build_authorize_request(challenge: str, state: str, org_uuid: str) -> tuple[str, dict[str, str]]:
+def build_authorize_request(
+    challenge: str,
+    state: str,
+    org_uuid: str,
+    *,
+    scope: str = SCOPE_CODE,
+    redirect_uri: str = REDIRECT_URI,
+    authorize_url: str = AUTHORIZE_API,
+) -> tuple[str, dict[str, str]]:
     org = (org_uuid or "").strip()
     if not org:
         raise ConvertError("convert_failed")
@@ -78,13 +120,13 @@ def build_authorize_request(challenge: str, state: str, org_uuid: str) -> tuple[
         "response_type": "code",
         "client_id": CLIENT_ID,
         "organization_uuid": org,
-        "redirect_uri": REDIRECT_URI,
-        "scope": SCOPES,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
-    return AUTHORIZE_API.format(org=org), body
+    return authorize_url.format(org=org), body
 
 
 def _code_from_url(url: str | None) -> tuple[str | None, str | None]:
@@ -149,6 +191,8 @@ def build_credentials_file(
     refresh = tokens.get("refresh_token") or tokens.get("refreshToken")
     if not isinstance(access, str) or not access.strip():
         raise ConvertError("convert_failed")
+    if not isinstance(refresh, str) or not refresh.strip():
+        raise ConvertError("no_refresh")
     expires_in = tokens.get("expires_in") or tokens.get("expiresIn")
     expires_at = tokens.get("expires_at") or tokens.get("expiresAt")
     now_ms = int(time.time() * 1000)
@@ -172,8 +216,7 @@ def build_credentials_file(
         "expiresAt": exp_ms,
         "scopes": [str(item) for item in scopes],
     }
-    if isinstance(refresh, str) and refresh.strip():
-        oauth["refreshToken"] = refresh.strip()
+    oauth["refreshToken"] = refresh.strip()
     sub = subscription_type(plan_label)
     if sub:
         oauth["subscriptionType"] = sub
@@ -217,6 +260,96 @@ def _first_org(*values: Any) -> str | None:
     return None
 
 
+def pick_org_uuid(body: Any) -> str | None:
+    """Prefer a team org, then the first uuid — same rule as the working cookie flow."""
+    items: list[Any] = []
+    if isinstance(body, list):
+        items = body
+    elif isinstance(body, dict):
+        data = body.get("data") or body.get("organizations")
+        if isinstance(data, list):
+            items = data
+        else:
+            items = [body]
+    team = None
+    first = None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        uid = item.get("uuid") or item.get("id")
+        if not isinstance(uid, str) or not uid.strip():
+            continue
+        uid = uid.strip()
+        if first is None:
+            first = uid
+        raven = item.get("raven_type")
+        if raven == "team":
+            team = uid
+    return team or first
+
+
+def oauth_error_message(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    err = body.get("error")
+    if isinstance(err, dict):
+        details = err.get("details") if isinstance(err.get("details"), dict) else {}
+        for key in ("message", "error_code", "type"):
+            value = details.get(key) or err.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    if isinstance(err, str) and err.strip():
+        return err.strip()
+    value = body.get("message")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return ""
+
+
+def oauth_error_code(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    err = body.get("error")
+    if isinstance(err, dict):
+        details = err.get("details") if isinstance(err.get("details"), dict) else {}
+        for key in ("error_code", "type", "message"):
+            value = details.get(key) or err.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    if isinstance(err, str) and err.strip():
+        return err.strip()
+    for key in ("error_code", "message"):
+        value = body.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def is_stale_oauth(status: int, body: Any) -> bool:
+    if status not in {401, 403}:
+        return False
+    hay = " ".join(
+        part.lower()
+        for part in (oauth_error_code(body), oauth_error_message(body), str(body or ""))
+        if part
+    )
+    return any(marker in hay for marker in STALE_MARKERS)
+
+
+def is_no_plan(status: int, body: Any, plan_label: str | None = None) -> bool:
+    if status not in {401, 403}:
+        return False
+    hay = " ".join(
+        part.lower()
+        for part in (oauth_error_code(body), oauth_error_message(body), str(body or ""))
+        if part
+    )
+    if any(marker in hay for marker in NO_PLAN_MARKERS):
+        return True
+    plan = (plan_label or "").lower()
+    return "free" in plan and "permission_error" in hay
+
+
 def resolve_org_uuid(
     fields: dict[str, str],
     check_result: dict[str, Any] | None,
@@ -228,18 +361,18 @@ def resolve_org_uuid(
     extras = (check_result or {}).get("extras") if isinstance(check_result, dict) else {}
     extras_org = extras.get("organizationId") if isinstance(extras, dict) else None
     check_orgs = org_ids_from(check_result) if isinstance(check_result, dict) else []
-    org = _first_org(extras_org, fields.get("lastActiveOrg"), check_orgs)
-    if org:
-        return org
+    fallback = _first_org(extras_org, fields.get("lastActiveOrg"), check_orgs)
 
     status, body, _set_cookie, _location = _call(http, "GET", ORGANIZATIONS_URL, header, device)
     probes.append({"path": "organizations", "status": status})
+    org = pick_org_uuid(body) if status == 200 else None
+    if org:
+        return org
+    if fallback:
+        return fallback
     if status in {401, 403}:
         raise ConvertError("expired")
-    org = _first_org(org_ids_from(body))
-    if not org:
-        raise ConvertError("convert_failed")
-    return org
+    raise ConvertError("convert_failed")
 
 
 def convert_session(
@@ -265,6 +398,7 @@ def convert_session(
         raise ConvertError(str(exc) or "missing_session") from exc
 
     header = cookie_header(fields)
+    auth_cookie = session_auth_header(fields)
     device = fields.get("anthropic-device-id")
 
     if http_request is None:
@@ -291,45 +425,148 @@ def convert_session(
         http = http_request
 
     org = resolve_org_uuid(fields, check_result, http, header, device, probes)
-    verifier, challenge, state = make_pkce()
-    authorize_url, authorize_body = build_authorize_request(challenge, state, org)
-    status, body, _set_cookie, location = _call(
-        http,
-        "POST",
-        authorize_url,
-        header,
-        device,
-        json_body=authorize_body,
-        extra_headers=AUTHORIZE_HEADERS,
-    )
-    probes.append({"path": "authorize", "status": status})
-    if status in {401, 403}:
-        raise ConvertError("expired")
-    code, returned_state = extract_authorization_code(location, body)
-    if not code:
-        raise ConvertError("convert_failed")
-    if returned_state and returned_state != state:
-        raise ConvertError("convert_failed")
+    last_reason = "convert_failed"
+    plan_label = check_result.get("planLabel") if isinstance(check_result, dict) else None
 
-    token_body = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": REDIRECT_URI,
-        "client_id": CLIENT_ID,
-        "code_verifier": verifier,
-        "state": state,
-    }
-    status, tokens, _set_cookie, _location = _call(http, "POST", TOKEN_URL, header, device, json_body=token_body)
-    probes.append({"path": "token", "status": status})
-    if status in {401, 403}:
-        raise ConvertError("expired")
-    if status != 200 or not isinstance(tokens, dict):
-        raise ConvertError("convert_failed")
+    def attempt(
+        scope: str,
+        *,
+        authorize_url_tmpl: str,
+        redirect_uri: str,
+        token_urls: tuple[str, ...],
+        extra_headers: dict[str, str],
+    ) -> dict[str, Any] | None:
+        nonlocal last_reason
+        verifier, challenge, state = make_pkce()
+        authorize_url, authorize_body = build_authorize_request(
+            challenge,
+            state,
+            org,
+            scope=scope,
+            redirect_uri=redirect_uri,
+            authorize_url=authorize_url_tmpl,
+        )
+        host = urlparse(authorize_url).netloc
+        status, body, _set_cookie, location = _call(
+            http,
+            "POST",
+            authorize_url,
+            auth_cookie,
+            device,
+            json_body=authorize_body,
+            extra_headers=extra_headers,
+        )
+        err = oauth_error_code(body)
+        message = oauth_error_message(body)
+        probes.append({"path": "authorize", "status": status})
+        print(
+            redact(
+                f"credential authorize status={status} error={err or '-'} "
+                f"message={message or '-'} scope={scope.split()[0]} host={host}"
+            ),
+            flush=True,
+        )
+        if is_stale_oauth(status, body):
+            last_reason = "reauth"
+            return None
+        if is_no_plan(status, body, plan_label):
+            last_reason = "no_plan"
+            return None
+        if status in {401, 403}:
+            last_reason = "expired"
+            return None
+        code, returned_state = extract_authorization_code(location, body)
+        if not code:
+            last_reason = "convert_failed"
+            return None
+        if returned_state and returned_state != state:
+            last_reason = "convert_failed"
+            return None
+        token_body = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": CLIENT_ID,
+            "code_verifier": verifier,
+            "state": returned_state or state,
+        }
+        tokens: Any = None
+        status = 0
+        for token_url in token_urls:
+            status, tokens, _set_cookie, _location = _call(
+                http,
+                "POST",
+                token_url,
+                "",
+                device,
+                json_body=token_body,
+                extra_headers=TOKEN_HEADERS,
+            )
+            probes.append({"path": "token", "status": status})
+            print(
+                redact(
+                    f"credential token status={status} error={oauth_error_code(tokens) or '-'} "
+                    f"host={urlparse(token_url).netloc}"
+                ),
+                flush=True,
+            )
+            if status == 200 and isinstance(tokens, dict):
+                break
+        if status in {401, 403}:
+            last_reason = "expired"
+            return None
+        if status != 200 or not isinstance(tokens, dict):
+            last_reason = "convert_failed"
+            return None
+        try:
+            return build_credentials_file(tokens, plan_label)
+        except ConvertError as exc:
+            last_reason = exc.reason or "convert_failed"
+            return None
 
-    plan = None
-    if isinstance(check_result, dict):
-        plan = check_result.get("planLabel")
-    credentials = build_credentials_file(tokens, plan)
+    credentials = None
+    for target in (
+        {
+            "authorize_url": AUTHORIZE_API,
+            "headers": CAI_AUTHORIZE_HEADERS,
+            "redirect": REDIRECT_URI,
+            "tokens": (TOKEN_URL, API_TOKEN_URL),
+        },
+        {
+            "authorize_url": LEGACY_AUTHORIZE_API,
+            "headers": WEB_AUTHORIZE_HEADERS,
+            "redirect": REDIRECT_URI,
+            "tokens": (TOKEN_URL, API_TOKEN_URL),
+        },
+        {
+            "authorize_url": AUTHORIZE_API,
+            "headers": CAI_AUTHORIZE_HEADERS,
+            "redirect": LEGACY_REDIRECT_URI,
+            "tokens": (LEGACY_TOKEN_URL,),
+        },
+    ):
+        credentials = attempt(
+            SCOPE_CODE,
+            authorize_url_tmpl=target["authorize_url"],
+            redirect_uri=target["redirect"],
+            token_urls=target["tokens"],
+            extra_headers=target["headers"],
+        )
+        if not credentials:
+            credentials = attempt(
+                SCOPE_INFERENCE,
+                authorize_url_tmpl=target["authorize_url"],
+                redirect_uri=target["redirect"],
+                token_urls=target["tokens"],
+                extra_headers=target["headers"],
+            )
+        if credentials:
+            break
+        if last_reason == "no_plan":
+            break
+    if not credentials:
+        raise ConvertError(last_reason)
+
     elapsed_ms = int((time.monotonic() - started) * 1000)
     statuses = ",".join(str(item["status"]) for item in probes)
     paths = ",".join(item["path"] for item in probes)

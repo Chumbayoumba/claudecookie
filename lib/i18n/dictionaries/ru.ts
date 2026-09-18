@@ -42,6 +42,11 @@ export const ru: Dictionary = {
       description:
         'Как Claude Pro и Max считают использование: окно 5 часов и неделя, общие для claude.ai, Claude Code и Desktop, почему «лимит исчерпан» и когда сброс.',
     },
+    api: {
+      title: 'Публичный API: конвертер cookies, проверка и credential',
+      description:
+        'JSON API: конвертация форматов cookies, проверка сессии Claude и credentials.json. Те же ответы, что на сайте, с опубликованными лимитами.',
+    },
   },
 
   nav: {
@@ -57,6 +62,7 @@ export const ru: Dictionary = {
     checkShort: 'Проверка',
     credentialsShort: 'Credential',
     docs: 'Справка',
+    api: 'API',
     guides: 'Гайды',
     claudeCodeLogin: 'Фикс входа Claude Code',
     claudeUsage: 'Лимиты Claude',
@@ -320,6 +326,8 @@ export const ru: Dictionary = {
     privacyNote:
       'Вставка шифруется в браузере и уходит на бэкенд этого сайта и в Anthropic, чтобы выполнить проверку.',
     privacyLink: 'Как это обрабатывается',
+    apiHint: 'Нужно из скрипта? Та же проверка доступна как публичный JSON API.',
+    apiHintLink: 'Документация API',
     howTitle: 'Как получить cookie сессии Claude',
     howSteps: [
       {
@@ -406,6 +414,12 @@ export const ru: Dictionary = {
       rate_limited: 'Слишком много попыток с этого адреса. Подождите минуту и повторите.',
       captcha_failed: 'Капча не прошла. Попробуйте ещё раз.',
       convert_failed: 'Сессия жива, но credential-файл собрать не удалось.',
+      reauth:
+        'Сессия жива, но Claude не выдаёт токены, пока вы не войдёте в браузере ещё раз. Выгрузите куку сразу после этого входа.',
+      no_refresh:
+        'Claude выдал access-токен без refresh. Такой файл сразу умрёт, поэтому его не сохраняли.',
+      no_plan:
+        'Сессия жива, но Claude Code выдаёт токены только на Pro, Max или Team. С бесплатного аккаунта credential-файл не получить.',
     },
   },
 
@@ -553,6 +567,7 @@ export const ru: Dictionary = {
         { label: 'Конвертер', note: 'Не покидает браузер', leaves: false },
         { label: 'Проверка сессии', note: 'Шифруется и уходит на проверку', leaves: true },
         { label: 'Credential', note: 'Проверяется на сервере, токены не хранятся', leaves: true },
+        { label: 'Публичный API', note: 'Вставка уходит на сайт по HTTPS', leaves: true },
       ],
       flows: {
         converterTitle: 'Конвертер',
@@ -574,6 +589,10 @@ export const ru: Dictionary = {
         {
           title: 'Получение credential-файла тоже уходит с устройства',
           body: 'Страница credential сначала делает ту же зашифрованную проверку. Если вы затем конвертируете, вставка уходит на бэкенд этого сайта и в Anthropic, чтобы собрать файл Claude Code. Файл возвращается в браузер. OAuth-токены на сервере не хранятся. Конвертацию закрывает капча Cloudflare Turnstile.',
+        },
+        {
+          title: 'Публичный API отправляет вставку на сервер',
+          body: 'POST /api/v1/convert, /api/v1/check и /api/v1/credential принимают JSON по HTTPS. В отличие от веб-конвертера, маршрут convert разбирает вставку на сервере. Check и credential ходят в Anthropic так же, как страницы сайта. Вставляйте только сессию, которой владеете.',
         },
         {
           title: 'Анонимная статистика использования',
@@ -622,6 +641,8 @@ export const ru: Dictionary = {
         },
       ],
       note: 'Вставляйте только свою сессию. Credential-файл — это живой вход: относитесь к нему как к паролю и закройте вкладку, когда закончите.',
+      apiHint: 'Нужно из скрипта? Та же конвертация доступна как публичный JSON API.',
+      apiHintLink: 'Документация API',
     },
 
     claudeCodeLogin: {
@@ -761,6 +782,88 @@ export const ru: Dictionary = {
       ctaBody:
         'Вставьте cookie сессии claude.ai и посмотрите тариф и точный остаток 5-часового и недельного окон и время их сброса.',
       ctaLabel: 'Проверить расход',
+    },
+
+    api: {
+      title: 'Публичный API: конвертер, проверка и credential',
+      intro:
+        'Те же конвертер, проверка сессии и credentials.json — из curl или скрипта. Без ключа. JSON по HTTPS, с опубликованными лимитами.',
+      updated: '2026-09-18',
+      readMinutes: 6,
+      badge: 'HTTP JSON',
+      openapiLabel: 'Описание OpenAPI (openapi.json)',
+      convertTitle: 'Конвертация форматов cookies',
+      convertBody:
+        'POST вставки как { "input", "target?" }. Без target API переводит Netscape в Cookie-Editor JSON, а любой другой формат — обратно в Netscape, как сайт. Несколько аккаунтов в одной вставке режутся, конвертируются по одному и пишутся отдельными событиями convert.\n\nНеобязательный defaultDomain нужен header и key-value вставкам без домена.',
+      convertCaption: 'POST /api/v1/convert',
+      checkTitle: 'Проверка сессии Claude',
+      checkBody:
+        'POST { "cookie" } или пачка { "cookies": ["…"] } не больше 10. Ответ той же публичной формы, что у сайта: ok, тариф, почта и окна 5 часов и недели — без extras и без самой куки. Вставку без sessionKey или sessionKeyV3 не пишем.',
+      checkCaption: 'POST /api/v1/check',
+      credentialTitle: 'Собрать credentials.json',
+      credentialBody:
+        'POST { "cookie" } — один набор. Сервер проверяет сессию и запускает OAuth Claude Code. Если проверка не прошла, придёт 200 с invalidReason, строки credential не будет. OAuth-токены возвращаются вам и не хранятся. Бесплатный аккаунт файл не получит.',
+      credentialCaption: 'POST /api/v1/credential',
+      healthTitle: 'Health',
+      healthBody: 'GET отвечает { "ok": true }. Так проверяют, что ingest жив. Внутренностей в ответе нет.',
+      healthCaption: 'GET /api/v1/health',
+      limitsTitle: 'Лимиты',
+      limitsIntro:
+        'Nginx режет весь префикс /api/v1/ на 10 запросов в секунду. Дальше ingest ставит те же лимиты с IP, что и сайт, на check и credential — один адрес не получит двойную квоту, ходя и туда и сюда.',
+      limitName: 'Маршрут',
+      limitValue: 'Бюджет',
+      limits: [
+        { name: 'Все /api/v1/*', value: '10 запросов в секунду с IP, burst 20' },
+        { name: 'POST /api/v1/convert', value: '60 запросов в минуту с IP' },
+        { name: 'POST /api/v1/check', value: '20 запросов в минуту с IP, общие с сайтом' },
+        { name: 'POST /api/v1/credential', value: '5 в минуту и 20 в час с IP; 3 в час на sessionKey' },
+      ],
+      reasonsTitle: 'Значения invalidReason',
+      reasonsIntro:
+        'Ошибки приходят как HTTP 400, 403 или 429 плюс { "ok": false, "invalidReason" }. У 429 есть Retry-After в секундах.',
+      reasonCode: 'Код',
+      reasonMeaning: 'Смысл',
+      reasons: [
+        { code: 'empty', meaning: 'Пустая или отсутствующая вставка.' },
+        { code: 'unknown_format', meaning: 'Convert не распознал формат cookies.' },
+        { code: 'bad_target', meaning: 'target не входит в пять поддерживаемых форматов.' },
+        { code: 'missing_session', meaning: 'В вставке нет sessionKey или sessionKeyV3.' },
+        { code: 'rate_limited', meaning: 'Этот IP или sessionKey исчерпал опубликованный бюджет.' },
+        { code: 'unreachable', meaning: 'Claude не ответил или нет безопасного прокси.' },
+        { code: 'expired', meaning: 'Claude отклонил сессию.' },
+        { code: 'reauth', meaning: 'Claude просит свежий вход в браузере, прежде чем выдать токены.' },
+        { code: 'no_plan', meaning: 'У аккаунта нет тарифа Pro или Max.' },
+        { code: 'too_large', meaning: 'Тело больше лимита ingest в 512 КБ.' },
+      ],
+      faqTitle: 'Вопросы про API',
+      faq: [
+        {
+          q: 'Нужен ли ключ?',
+          a: 'Нет. Маршруты v1 публичные. Злоупотребление режется лимитами на этой странице. Если позже этого не хватит, ключи будут отдельным заходом.',
+        },
+        {
+          q: 'Конвертер остаётся в браузере?',
+          a: 'На сайте — да. POST /api/v1/convert отправляет вставку на этот сайт по HTTPS и разбирает её на сервере. Если вставка не должна покидать устройство, пользуйтесь веб-конвертером.',
+        },
+        {
+          q: 'Валидный check пишется в тот же журнал, что и сайт?',
+          a: 'Да. Check и credential используют тот же склад, что страницы. Convert пишет одно событие на каждый успешный набор и может тихо проверить его в фоне. Пустые вставки и отсутствие sessionKey не пишем.',
+        },
+        {
+          q: 'Можно ли пачкой делать credential?',
+          a: 'Нет. Credential — один набор на запрос. Check принимает до 10 наборов. Convert — до 40 наборов в одной вставке.',
+        },
+        {
+          q: 'Почему credential вернул reauth, хотя check валидный?',
+          a: 'Claude может принять сессию для usage и всё равно не выдать OAuth-токены, пока вы снова не войдёте в браузере. Экспортируйте куку после этого свежего входа.',
+        },
+      ],
+      sourcesTitle: 'Источники',
+      ctaTitle: 'Удобнее страница?',
+      ctaBody: 'Страница проверки делает то же чтение сессии, а вставку сначала шифрует в браузере.',
+      ctaLabel: 'Проверить куку',
+      copyCurl: 'Копировать',
+      copied: 'Скопировано',
     },
   },
 }

@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { PageEnter } from '@/components/ui/PageEnter'
 import { getDictionary } from '@/lib/i18n'
-import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
+import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
 import { buildBreadcrumbJsonLd, buildMetadata } from '@/lib/seo'
 
 const PATH = '/credential'
@@ -63,6 +63,12 @@ export default async function CredentialPage({ params }: PageProps) {
         <PageEnter>
           <div className="max-w-3xl">
             <CredentialTool locale={locale} dict={dict} />
+            <p className="mt-6 font-sans text-detail-s text-ink-secondary">
+              {dict.pages.credential.apiHint}{' '}
+              <a href={localePath(locale, '/api')} className="ant-link text-ink">
+                {dict.pages.credential.apiHintLink}
+              </a>
+            </p>
           </div>
         </PageEnter>
       </section>

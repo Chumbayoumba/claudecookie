@@ -82,6 +82,9 @@ REASON_LABEL = {
     "rate_limited": "лимит запросов",
     "captcha_failed": "капча не прошла",
     "convert_failed": "не удалось получить credential",
+    "reauth": "нужен свежий вход в браузере",
+    "no_refresh": "Claude не выдал refresh-токен",
+    "no_plan": "бесплатный тариф, Claude Code не выдаёт токен",
     "invalid": "невалидна",
 }
 JSON_FORMATS = ("cookie-editor", "puppeteer", "key-value")
@@ -503,7 +506,7 @@ def _pipeline_blob_count(conn, valid_only: bool) -> int:
     return scalar(
         conn,
         f"SELECT COUNT(*) FROM events e JOIN blobs b ON b.event_id=e.id "
-        f"WHERE e.type IN ('convert','check') {extra}",
+        f"WHERE e.type IN ('convert','check','credential') {extra}",
     )
 
 
@@ -512,7 +515,7 @@ def _pipeline_blob_rows(conn, valid_only: bool):
     return conn.execute(
         f"SELECT e.id, e.ts, e.type, e.to_fmt, e.valid, e.info, b.output FROM events e "
         f"JOIN blobs b ON b.event_id=e.id "
-        f"WHERE e.type IN ('convert','check') {extra} ORDER BY e.id",
+        f"WHERE e.type IN ('convert','check','credential') {extra} ORDER BY e.id",
     ).fetchall()
 
 
@@ -521,7 +524,7 @@ def view_cookies(conn) -> tuple[str, list]:
     total = _pipeline_blob_count(conn, False)
     txt = (
         "<b>📥 Куки</b>\n\n"
-        "Один склад: конвертер и проверка логина.\n\n"
+        "Один склад: конвертер, проверка и credential.\n\n"
         f"✅ Валидные: <b>{fmt(valid)}</b>\n"
         f"📦 Все: <b>{fmt(total)}</b>"
     )
@@ -603,7 +606,7 @@ def _file_slug(raw: str) -> str:
 
 
 def _zip_entry_name(row) -> str:
-    if row["type"] == "check":
+    if row["type"] in ("check", "credential"):
         email = ""
         plan = ""
         try:
@@ -666,7 +669,7 @@ def download_pipeline(conn, chat_id: int, pile: str, mode: str) -> str:
 
 
 def recheck_all_stored() -> dict:
-    """Re-check every stored convert/check blob. Updates the same rows.
+    """Re-check every stored convert/check/credential blob. Updates the same rows.
 
     The same sessionKey is probed once (force, no 60s cache) and the result is
     written onto every event that carries it. Pastes without a session key stay

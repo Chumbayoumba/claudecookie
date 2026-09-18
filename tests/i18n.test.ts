@@ -87,6 +87,10 @@ describe('dictionaries', () => {
       expect(d.pages.netscape.fields.length, locale).toBe(en.pages.netscape.fields.length)
       expect(d.pages.json.entries.length, locale).toBe(en.pages.json.entries.length)
       expect(d.pages.privacy.sections.length, locale).toBe(en.pages.privacy.sections.length)
+      expect(d.pages.privacy.summary.length, locale).toBe(en.pages.privacy.summary.length)
+      expect(d.pages.api.faq.length, locale).toBe(en.pages.api.faq.length)
+      expect(d.pages.api.limits.length, locale).toBe(en.pages.api.limits.length)
+      expect(d.pages.api.reasons.length, locale).toBe(en.pages.api.reasons.length)
     }
   })
 

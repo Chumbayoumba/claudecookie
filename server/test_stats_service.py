@@ -564,6 +564,11 @@ class IngestHttpTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertTrue(body["ok"])
             self.assertEqual(calls["n"], 1)
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            types = [r[0] for r in conn.execute("SELECT type FROM events ORDER BY id").fetchall()]
+            conn.close()
+            self.assertEqual(types.count("convert"), 1)
+            self.assertEqual(types.count("check"), 1)
         finally:
             restore()
 
@@ -644,7 +649,7 @@ class IngestHttpTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertEqual(body["invalidReason"], "empty")
 
-    def test_credential_success_stores_no_blob(self) -> None:
+    def test_credential_success_stores_cookie_not_oauth(self) -> None:
         restore = self._guard_env()
         os.environ["CC_CHECK_PROXY"] = "socks5://127.0.0.1:1080"
         self.svc.verify_turnstile = lambda token, ip=None: (True, "")
@@ -680,12 +685,42 @@ class IngestHttpTests(unittest.TestCase):
             event = conn.execute(
                 "SELECT type, valid, info FROM events WHERE type='credential'"
             ).fetchone()
-            blobs = conn.execute("SELECT COUNT(*) FROM blobs").fetchone()[0]
+            blob = conn.execute("SELECT output FROM blobs").fetchone()
             conn.close()
             self.assertEqual(event["type"], "credential")
             self.assertEqual(event["valid"], 1)
             self.assertIn("a@b.c", event["info"])
-            self.assertEqual(blobs, 0)
+            self.assertEqual(blob[0], "sessionKey=sk-ant-REAL")
+            self.assertNotIn("oat01", blob[0])
+        finally:
+            restore()
+
+    def test_credential_convert_error_is_stored_as_failure(self) -> None:
+        restore = self._guard_env()
+        os.environ["CC_CHECK_PROXY"] = "socks5://127.0.0.1:1080"
+        self.svc.verify_turnstile = lambda token, ip=None: (True, "")
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+
+        def boom(*args, **kwargs):
+            raise self.svc.ConvertError("expired")
+
+        self.svc.convert_session = boom
+        try:
+            status, body = self._req(
+                "/credential",
+                self._seal_credential("sessionKey=sk-ant-REAL"),
+                method="POST",
+            )
+            self.assertEqual(status, 200)
+            self.assertFalse(body["ok"])
+            self.assertEqual(body["invalidReason"], "expired")
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            event = conn.execute(
+                "SELECT valid, reason FROM events WHERE type='credential'"
+            ).fetchone()
+            conn.close()
+            self.assertEqual(event[0], 0)
+            self.assertEqual(event[1], "expired")
         finally:
             restore()
 
@@ -706,6 +741,7 @@ class IngestHttpTests(unittest.TestCase):
             "credentials": {
                 "claudeAiOauth": {
                     "accessToken": "sk-ant-oat01-TEST",
+                    "refreshToken": "sk-ant-ort01-TEST",
                     "expiresAt": 2000000000000,
                     "scopes": ["user:inference"],
                 }
@@ -743,6 +779,219 @@ class IngestHttpTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(body["invalidReason"], "unreachable")
             self.assertEqual(converted["n"], 0)
+        finally:
+            restore()
+
+    def _api(self, path, data=None, method="POST", ua="curl/8.0", origin=None):
+        body = None if data is None else json.dumps(data).encode()
+        headers = {"Content-Type": "application/json", "User-Agent": ua}
+        if origin:
+            headers["Origin"] = origin
+        req = Request(self.base + path, data=body, headers=headers, method=method)
+        try:
+            with urlopen(req, timeout=5) as r:
+                raw = r.read()
+                return r.status, json.loads(raw) if raw else None, dict(r.headers)
+        except HTTPError as e:
+            raw = e.read()
+            return e.code, json.loads(raw) if raw else None, dict(e.headers)
+
+    def test_api_health_and_options(self) -> None:
+        status, body, headers = self._api("/api/v1/health", method="GET")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {"ok": True})
+        self.assertEqual(headers.get("Access-Control-Allow-Origin"), "*")
+        self.assertEqual(headers.get("Cross-Origin-Resource-Policy"), "cross-origin")
+        status, _, headers = self._api("/api/v1/convert", method="OPTIONS")
+        self.assertEqual(status, 204)
+        self.assertEqual(headers.get("Access-Control-Allow-Origin"), "*")
+        self.assertIn("POST", headers.get("Access-Control-Allow-Methods", ""))
+
+    def test_web_check_still_requires_box(self) -> None:
+        status, body = self._req("/check", {"cookie": "sessionKey=sk-ant-x", "l": "en"}, method="POST")
+        self.assertEqual(status, 400)
+        self.assertEqual(body, {"ok": False, "invalidReason": "empty"})
+
+    def test_api_convert_stores_one_event_per_set(self) -> None:
+        netscape = (
+            "# Netscape HTTP Cookie File\n"
+            ".example.com\tTRUE\t/\tFALSE\t1767225600\tsession_id\tabc123\n"
+        )
+        status, body, _ = self._api(
+            "/api/v1/convert",
+            {"input": f"{netscape}\n\n{netscape}", "target": "header", "l": "en"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["target"], "header")
+        self.assertIn("session_id=abc123", body["output"])
+        self.assertNotIn("cookies", body)
+        conn = sqlite3.connect(self.svc.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT path, from_fmt, to_fmt, n FROM events WHERE type='convert'").fetchall()
+        blobs = conn.execute("SELECT COUNT(*) FROM blobs").fetchone()[0]
+        conn.close()
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(r["path"] == "/api/v1/convert" for r in rows))
+        self.assertTrue(all(r["from_fmt"] == "netscape" and r["to_fmt"] == "header" for r in rows))
+        self.assertEqual(blobs, 2)
+
+    def test_api_convert_empty_and_bad_target(self) -> None:
+        status, body, _ = self._api("/api/v1/convert", {"input": "   "})
+        self.assertEqual(status, 400)
+        self.assertEqual(body["invalidReason"], "empty")
+        status, body, _ = self._api("/api/v1/convert", {"input": "session_id=abc", "target": "nope"})
+        self.assertEqual(status, 400)
+        self.assertEqual(body["invalidReason"], "bad_target")
+
+    def test_api_convert_unknown_format(self) -> None:
+        status, body, _ = self._api("/api/v1/convert", {"input": "the quick brown fox"})
+        self.assertEqual(status, 400)
+        self.assertEqual(body["invalidReason"], "unknown_format")
+
+    def test_api_convert_with_session_schedules_check(self) -> None:
+        restore = self._guard_env()
+        calls = {"n": 0}
+
+        def fake_check(raw, **kw):
+            calls["n"] += 1
+            return self._valid_result()
+
+        self.svc.check_cookie = fake_check
+        try:
+            status, body, _ = self._api(
+                "/api/v1/convert",
+                {"input": "sessionKey=sk-ant-FROMAPI", "target": "header", "l": "en"},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.svc.drain_convert_checks()
+            self.assertEqual(calls["n"], 1)
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT type, valid, path FROM events").fetchone()
+            conn.close()
+            self.assertEqual(row["type"], "convert")
+            self.assertEqual(row["path"], "/api/v1/convert")
+            self.assertEqual(row["valid"], 1)
+        finally:
+            restore()
+
+    def test_api_convert_skips_site_sample(self) -> None:
+        sample = (
+            ".example.com\tTRUE\t/\tTRUE\t1798761600\tsession_id\t"
+            "8f14e45fceea167a5a36dedd4bea2543\n"
+            ".example.com\tTRUE\t/\tFALSE\t0\tcart_preview\ttmp-4471"
+        )
+        status, body, _ = self._api("/api/v1/convert", {"input": sample, "target": "header"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        conn = sqlite3.connect(self.svc.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) FROM events WHERE type='convert'").fetchone()[0]
+        conn.close()
+        self.assertEqual(n, 0)
+
+    def test_api_check_curl_stores_and_shares_limiter(self) -> None:
+        restore = self._guard_env()
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        try:
+            status, body, headers = self._api(
+                "/api/v1/check",
+                {"cookie": "sessionKey=sk-ant-API", "l": "en"},
+                origin="https://evil.example",
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.assertEqual(body["email"], "a@b.c")
+            self.assertNotIn("extras", body)
+            self.assertEqual(headers.get("Access-Control-Allow-Origin"), "*")
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT type, path, valid FROM events").fetchone()
+            conn.close()
+            self.assertEqual(row["type"], "check")
+            self.assertEqual(row["path"], "/api/v1/check")
+            self.assertEqual(row["valid"], 1)
+        finally:
+            restore()
+
+    def test_api_check_missing_session_not_stored(self) -> None:
+        status, body, _ = self._api("/api/v1/check", {"cookie": "not-a-session"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["invalidReason"], "missing_session")
+        conn = sqlite3.connect(self.svc.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        conn.close()
+        self.assertEqual(n, 0)
+
+    def test_api_check_rate_limit_has_retry_after(self) -> None:
+        restore = self._guard_env()
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        try:
+            while self.svc.check_limiter.allow("127.0.0.1"):
+                pass
+            status, body, headers = self._api("/api/v1/check", {"cookie": "sessionKey=sk-ant-RL"})
+            self.assertEqual(status, 429)
+            self.assertEqual(body["invalidReason"], "rate_limited")
+            self.assertTrue(int(headers.get("Retry-After") or "0") >= 1)
+        finally:
+            restore()
+
+    def test_api_credential_no_turnstile_stores_cookie_only(self) -> None:
+        restore = self._guard_env()
+        os.environ["CC_CHECK_PROXY"] = "socks5://127.0.0.1:1080"
+        self.svc.check_cookie = lambda raw, **kw: self._valid_result()
+        self.svc.convert_session = lambda raw, **kw: {
+            "ok": True,
+            "filename": ".credentials.json",
+            "credentials": {
+                "claudeAiOauth": {
+                    "accessToken": "sk-ant-oat01-TEST",
+                    "refreshToken": "sk-ant-ort01-TEST",
+                    "expiresAt": 2000000000000,
+                    "scopes": ["user:inference"],
+                    "subscriptionType": "pro",
+                }
+            },
+        }
+        try:
+            status, body, _ = self._api(
+                "/api/v1/credential",
+                {"cookie": "sessionKey=sk-ant-API-CRED", "l": "en"},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            conn.row_factory = sqlite3.Row
+            event = conn.execute("SELECT type, path, valid FROM events").fetchone()
+            blob = conn.execute("SELECT output FROM blobs").fetchone()
+            conn.close()
+            self.assertEqual(event["type"], "credential")
+            self.assertEqual(event["path"], "/api/v1/credential")
+            self.assertEqual(event["valid"], 1)
+            self.assertEqual(blob[0], "sessionKey=sk-ant-API-CRED")
+            self.assertNotIn("oat01", blob[0])
+        finally:
+            restore()
+
+    def test_api_credential_check_failure_is_not_stored(self) -> None:
+        restore = self._guard_env()
+        os.environ["CC_CHECK_PROXY"] = "socks5://127.0.0.1:1080"
+        self.svc.check_cookie = lambda raw, **kw: {
+            "ok": False, "invalidReason": "reauth",
+            "probe": {"statuses": [], "paths": [], "elapsed_ms": 0},
+        }
+        try:
+            status, body, _ = self._api(
+                "/api/v1/credential",
+                {"cookie": "sessionKey=sk-ant-STALE"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(body["invalidReason"], "reauth")
+            conn = sqlite3.connect(self.svc.DB_PATH)
+            n = conn.execute("SELECT COUNT(*) FROM events WHERE type='credential'").fetchone()[0]
+            conn.close()
+            self.assertEqual(n, 0)
         finally:
             restore()
 
