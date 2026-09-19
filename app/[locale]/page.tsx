@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { Converter } from '@/components/converter/Converter'
 import { Hero } from '@/components/converter/Hero'
 import { JsonLd } from '@/components/seo/JsonLd'
+import { Accordion } from '@/components/ui/Accordion'
+import { ApiHint } from '@/components/ui/ApiHint'
 import { MoreTools } from '@/components/ui/MoreTools'
 import { Reveal } from '@/components/ui/Reveal'
 import { getDictionary } from '@/lib/i18n'
@@ -41,6 +43,7 @@ export default async function HomePage({ params }: PageProps) {
     locale,
     appName: dict.meta.home.title,
     appDescription: dict.meta.home.description,
+    faq: dict.faq.items,
   })
 
   return (
@@ -51,13 +54,25 @@ export default async function HomePage({ params }: PageProps) {
         <Hero dict={dict} />
       </section>
 
-      <section className="ant-container pb-12" aria-label={dict.hero.eyebrow}>
+      <section className="ant-container pb-6" aria-label={dict.hero.eyebrow}>
         <Converter locale={locale} dict={dict} />
+        <ApiHint locale={locale} hint={dict.common.tryApi} link={dict.common.tryApiLink} />
       </section>
 
       <Reveal>
         <MoreTools locale={locale} dict={dict} />
       </Reveal>
+
+      <section id="faq" className="ant-container pt-10 pb-16 scroll-mt-28">
+        <Reveal>
+          <h2 className="text-display-s sm:text-display-m">{dict.faq.title}</h2>
+        </Reveal>
+        <Reveal delay={0.06}>
+          <div className="mt-8 max-w-[45rem]">
+            <Accordion items={dict.faq.items} />
+          </div>
+        </Reveal>
+      </section>
     </>
   )
 }

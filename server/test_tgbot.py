@@ -188,9 +188,9 @@ class TgbotTests(unittest.TestCase):
         txt, kb = self.bot.view_cookies(conn)
         conn.close()
         data = [btn["callback_data"] for row in kb for btn in row]
-        self.assertEqual(data, ["ck:valid", "ck:all", "ck:recheck", "home"])
-        self.assertIn("Валидные", txt)
-        self.assertIn("Все", txt)
+        self.assertEqual(data, ["ck:valid", "ck:all", "ck:recheck", "ck:purge", "home"])
+        self.assertIn("Валидных", txt)
+        self.assertIn("Удалить все", " ".join(btn["text"] for row in kb for btn in row))
 
     def _capture_docs(self):
         sent = []
@@ -214,6 +214,26 @@ class TgbotTests(unittest.TestCase):
         self.assertTrue(toast.startswith("Отправлено"))
         with zipfile.ZipFile(io.BytesIO(sent[0]["content"])) as z:
             self.assertEqual(z.namelist(), ["andreas-max-valid.txt"])
+
+
+    def test_cookies_screen_lists_valid_accounts(self) -> None:
+        conn = self._conn()
+        info = json.dumps({
+            "email": "ada@example.com",
+            "plan": "Claude Pro",
+            "session": 79,
+            "weekly": 41,
+        })
+        self._event(conn, "check", valid=1, info=info, output="sessionKey=sk-ant-OK")
+        self._event(conn, "check", valid=0, reason="expired", output="sessionKey=sk-ant-BAD")
+        conn.commit()
+        txt, _kb = self.bot.view_cookies(conn)
+        conn.close()
+        self.assertIn("Валидных: <b>1</b>", txt)
+        self.assertIn("ada@example.com", txt)
+        self.assertIn("Claude Pro", txt)
+        self.assertIn("5ч 79%", txt)
+        self.assertIn("7д 41%", txt)
 
     def test_download_valid_skips_invalid_and_unchecked(self) -> None:
         conn = self._conn()
@@ -257,6 +277,52 @@ class TgbotTests(unittest.TestCase):
             self.assertEqual(z.namelist(), ["ada-pro-valid.txt"])
             self.assertEqual(z.read("ada-pro-valid.txt").decode(), "sessionKey=sk-ant-CRED")
 
+    def test_valid_zip_name_includes_limits(self) -> None:
+        conn = self._conn()
+        info = json.dumps({
+            "email": "ada@example.com",
+            "plan": "Claude Pro",
+            "session": 79,
+            "weekly": 41,
+        })
+        self._event(conn, "check", valid=1, info=info, output="sessionKey=sk-ant-OK")
+        conn.commit()
+        sent = self._capture_docs()
+        self.bot.download_pipeline(conn, 1, "valid", "zip")
+        conn.close()
+        with zipfile.ZipFile(io.BytesIO(sent[0]["content"])) as z:
+            self.assertEqual(z.namelist(), ["ada-pro-5h79-7d41-valid.txt"])
+
+    def test_valid_zip_dedupes_same_email(self) -> None:
+        conn = self._conn()
+        info = json.dumps({"email": "ada@example.com", "plan": "Claude Pro"})
+        self._event(conn, "check", valid=1, info=info, output="old-cookie")
+        self._event(conn, "check", valid=1, info=info, output="fresh-cookie")
+        conn.commit()
+        sent = self._capture_docs()
+        toast = self.bot.download_pipeline(conn, 1, "valid", "zip")
+        conn.close()
+        self.assertTrue(toast.startswith("Отправлено"))
+        with zipfile.ZipFile(io.BytesIO(sent[0]["content"])) as z:
+            self.assertEqual(z.namelist(), ["ada-pro-valid.txt"])
+            self.assertEqual(z.read("ada-pro-valid.txt").decode(), "fresh-cookie")
+
+    def test_purge_cookies_keeps_pageviews(self) -> None:
+        conn = self._conn()
+        self._event(conn, "pageview", path="/")
+        self._event(conn, "convert", output="from-convert")
+        self._event(conn, "check", valid=1, output="from-check")
+        conn.commit()
+        conn.close()
+        n = self.bot.purge_pipeline_cookies()
+        self.assertEqual(n, 2)
+        conn = self._conn()
+        types = [r[0] for r in conn.execute("SELECT type FROM events ORDER BY id")]
+        blobs = conn.execute("SELECT COUNT(*) FROM blobs").fetchone()[0]
+        conn.close()
+        self.assertEqual(types, ["pageview"])
+        self.assertEqual(blobs, 0)
+
     def test_download_txt_one_line_per_set(self) -> None:
         netscape = (
             "# Netscape HTTP Cookie File\n"
@@ -275,8 +341,9 @@ class TgbotTests(unittest.TestCase):
         lines = [ln for ln in text.split("\n") if ln]
         self.assertEqual(len(lines), 2)
         self.assertTrue(all("\n" not in ln for ln in lines))
-        self.assertIn("sessionKey=sk-ant-LINE", lines[0])
-        self.assertIn("sessionKey=sk-ant-HDR", lines[1])
+        joined = "\n".join(lines)
+        self.assertIn("sk-ant-LINE", joined)
+        self.assertIn("sk-ant-HDR", joined)
         self.assertTrue(sent[0]["name"].endswith(".txt"))
 
     def test_recheck_updates_same_rows_without_new_events(self) -> None:

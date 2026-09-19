@@ -76,18 +76,35 @@ interface JsonLdInput {
   locale: Locale
   appName: string
   appDescription: string
+  faq?: { q: string; a: string }[]
+}
+
+function faqNodes(url: string, faq?: { q: string; a: string }[]) {
+  if (!faq?.length) return []
+  return [
+    {
+      '@type': 'FAQPage',
+      '@id': `${url}#faq`,
+      mainEntity: faq.map((item) => ({
+        '@type': 'Question',
+        name: item.q,
+        acceptedAnswer: { '@type': 'Answer', text: item.a },
+      })),
+    },
+  ]
 }
 
 /**
  * Structured data for the converter page.
  *
- * `WebApplication` describes the tool itself. FAQ/HowTo stay off this page so
- * the graph only marks up what the visitor can actually see.
+ * `WebApplication` describes the tool itself. FAQ markup is included only when
+ * the same questions are actually rendered on the page.
  */
 export function buildHomeJsonLd({
   locale,
   appName,
   appDescription,
+  faq,
 }: JsonLdInput) {
   const url = localeUrl(locale, '/')
 
@@ -126,19 +143,21 @@ export function buildHomeJsonLd({
         publisher: { '@id': `${SITE_URL}/#org` },
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       },
+      ...faqNodes(url, faq),
     ],
   }
 }
 
 
 /**
- * Structured data for the /check/ tool page. FAQ/HowTo stay off this page so
- * the graph only marks up the checker the visitor can actually see.
+ * Structured data for the /check/ tool page. FAQ markup is included only when
+ * the same questions are actually rendered on the page.
  */
 export function buildCheckJsonLd({
   locale,
   appName,
   appDescription,
+  faq,
 }: JsonLdInput) {
   const url = localeUrl(locale, '/check')
 
@@ -159,6 +178,7 @@ export function buildCheckJsonLd({
         publisher: { '@id': `${SITE_URL}/#org` },
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       },
+      ...faqNodes(url, faq),
     ],
   }
 }
@@ -219,24 +239,105 @@ export function buildGuideJsonLd({
     })),
   }
 
-  const faqNode =
-    faq && faq.length
-      ? [
-          {
-            '@type': 'FAQPage',
-            '@id': `${url}#faq`,
-            mainEntity: faq.map((item) => ({
-              '@type': 'Question',
-              name: item.q,
-              acceptedAnswer: { '@type': 'Answer', text: item.a },
-            })),
-          },
-        ]
-      : []
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [article, breadcrumb, ...faqNodes(url, faq)],
+  }
+}
+
+/**
+ * Structured data for /api/: a WebAPI node for the live endpoints, plus the
+ * same TechArticle + FAQ graph as the other docs pages.
+ */
+export function buildApiJsonLd({
+  locale,
+  headline,
+  description,
+  datePublished,
+  dateModified,
+  faq,
+  trail,
+}: {
+  locale: Locale
+  headline: string
+  description: string
+  datePublished: string
+  dateModified: string
+  faq?: { q: string; a: string }[]
+  trail: { name: string; path: string }[]
+}) {
+  const url = localeUrl(locale, '/api')
+
+  const webApi = {
+    '@type': 'WebAPI',
+    '@id': `${url}#api`,
+    name: headline,
+    description,
+    url,
+    documentation: url,
+    termsOfService: localeUrl(locale, '/privacy'),
+    provider: { '@id': `${SITE_URL}/#org` },
+    isPartOf: { '@id': `${SITE_URL}/#website` },
+    endpoint: [
+      {
+        '@type': 'EntryPoint',
+        name: 'convert',
+        urlTemplate: `${SITE_URL}/api/v1/convert`,
+        httpMethod: 'POST',
+      },
+      {
+        '@type': 'EntryPoint',
+        name: 'check',
+        urlTemplate: `${SITE_URL}/api/v1/check`,
+        httpMethod: 'POST',
+      },
+      {
+        '@type': 'EntryPoint',
+        name: 'credential',
+        urlTemplate: `${SITE_URL}/api/v1/credential`,
+        httpMethod: 'POST',
+      },
+      {
+        '@type': 'EntryPoint',
+        name: 'health',
+        urlTemplate: `${SITE_URL}/api/v1/health`,
+        httpMethod: 'GET',
+      },
+    ],
+  }
+
+  const article = {
+    '@type': 'TechArticle',
+    '@id': `${url}#article`,
+    headline,
+    description,
+    url,
+    inLanguage: LOCALE_META[locale].tag,
+    datePublished,
+    dateModified,
+    author: { '@type': 'Organization', name: 'claudecookie', url: `${SITE_URL}/` },
+    publisher: { '@id': `${SITE_URL}/#org` },
+    isPartOf: { '@id': `${SITE_URL}/#website` },
+    about: { '@id': `${url}#api` },
+  }
+
+  const breadcrumb = {
+    '@type': 'BreadcrumbList',
+    itemListElement: trail.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      item: {
+        '@type': 'WebPage',
+        '@id': localeUrl(locale, item.path),
+        name: item.name,
+      },
+    })),
+  }
 
   return {
     '@context': 'https://schema.org',
-    '@graph': [article, breadcrumb, ...faqNode],
+    '@graph': [webApi, article, breadcrumb, ...faqNodes(url, faq)],
   }
 }
 

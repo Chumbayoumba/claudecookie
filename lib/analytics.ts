@@ -58,8 +58,37 @@ function post(body: unknown): void {
   }
 }
 
+/**
+ * Channel attribution for the beacon. `document.referrer` is the page the visitor
+ * came from (dev.to, HN, reddit, Yandex…); UTM params carry campaign attribution
+ * from paid and community links. Both are plain metadata, never cookie data.
+ */
+export function channelRef(): string {
+  if (typeof document === 'undefined') return ''
+  const ref = document.referrer
+  return ref ? ref.slice(0, 300) : ''
+}
+
+export function channelUtm(): string | null {
+  if (typeof window === 'undefined') return null
+  const params = new URLSearchParams(window.location.search)
+  const source = (params.get('utm_source') || '').slice(0, 100)
+  const medium = (params.get('utm_medium') || '').slice(0, 100)
+  const campaign = (params.get('utm_campaign') || '').slice(0, 100)
+  if (!source && !medium && !campaign) return null
+  const utm: Record<string, string> = {}
+  if (source) utm.source = source
+  if (medium) utm.medium = medium
+  if (campaign) utm.campaign = campaign
+  return JSON.stringify(utm)
+}
+
 export function trackPageview(path: string, locale: string): void {
-  const body = { t: 'pageview', p: path, l: locale }
+  const body: Record<string, unknown> = { t: 'pageview', p: path, l: locale }
+  const ref = channelRef()
+  const utm = channelUtm()
+  if (ref) body.ref = ref
+  if (utm) body.utm = utm
   if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
     try {
       navigator.sendBeacon(ENDPOINT, new Blob([JSON.stringify(body)], { type: 'application/json' }))
@@ -92,7 +121,7 @@ export function trackConvert({ from, to, n, out, locale }: ConvertEvent): void {
   if (sig === lastSig && t - lastAt < DEDUPE_MS) return
   lastSig = sig
   lastAt = t
-  void sealJson({ t: 'convert', from, to, n, out, l: locale })
+  void sealJson({ t: 'convert', from, to, n, out, l: locale, ref: channelRef() })
     .then((box) => post(box))
     .catch(() => {})
 }

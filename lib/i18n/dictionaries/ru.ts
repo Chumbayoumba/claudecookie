@@ -45,7 +45,7 @@ export const ru: Dictionary = {
     api: {
       title: 'Публичный API: конвертер cookies, проверка и credential',
       description:
-        'JSON API: конвертация форматов cookies, проверка сессии Claude и credentials.json. Те же ответы, что на сайте, с опубликованными лимитами.',
+        'JSON API: конвертация форматов cookies, проверка сессии Claude и credentials.json. Без ключа. Те же ответы, что на сайте, для curl и скриптов.',
     },
   },
 
@@ -240,6 +240,10 @@ export const ru: Dictionary = {
         q: 'Можно ли перенести куки из расширения в yt-dlp или curl?',
         a: 'Да, ради этого сюда чаще всего и приходят. Экспортируйте JSON из Cookie-Editor, вставьте сюда — на выходе получится файл Netscape cookies.txt, который можно передать в yt-dlp --cookies или curl -b.',
       },
+      {
+        q: 'Есть ли API, чтобы конвертировать cookies или проверить сессию Claude?',
+        a: 'Да. POST /api/v1/convert, /api/v1/check и /api/v1/credential принимают те же вставки, что и сайт. Без ключа. Человеческая документация — /api/, OpenAPI — /openapi.json.',
+      },
     ],
   },
 
@@ -251,6 +255,7 @@ export const ru: Dictionary = {
     credentials: 'Credential',
     guides: 'Гайды',
     docs: 'Справка',
+    github: 'GitHub',
     disclaimer:
       'Сайт не связан с Anthropic и не одобрен ею. Claude — товарный знак Anthropic PBC.',
     geoAttribution: 'Геолокация по IP — DB-IP',
@@ -377,7 +382,13 @@ export const ru: Dictionary = {
         q: 'Безопасно ли вставлять cookie здесь?',
         a: 'Вставка конвертера с устройства не уходит. Проверка сессии — иначе: она обязана отправить cookie на бэкенд этого сайта и в Anthropic, поэтому вставка сначала шифруется в браузере. Вставляйте cookie только от аккаунтов, которыми владеете, и прочтите страницу конфиденциальности.',
       },
+      {
+        q: 'Можно ли запустить эту проверку из скрипта?',
+        a: 'Да. POST cookie на /api/v1/check — те же аккаунт, тариф и окна расхода, что на этой странице. Без ключа. В документации API есть пример curl и лимиты.',
+      },
     ],
+    share: 'Поделиться',
+    shareText: 'Узнай, активна ли твоя сессия Claude — план и окна расхода, claudecookie.com',
   },
 
   credential: {
@@ -421,6 +432,8 @@ export const ru: Dictionary = {
       no_plan:
         'Сессия жива, но Claude Code выдаёт токены только на Pro, Max или Team. С бесплатного аккаунта credential-файл не получить.',
     },
+    share: 'Поделиться',
+    shareText: 'Сделайте из живой сессии Claude credentials для Claude Code — claudecookie.com',
   },
 
   moreTools: {
@@ -431,6 +444,9 @@ export const ru: Dictionary = {
     credTitle: 'Создать credentials Claude',
     credBody: 'Превратите действительную сессию в .credentials.json',
     credCta: 'Создать credentials',
+    apiTitle: 'Публичный JSON API',
+    apiBody: 'Конвертация, проверка и credentials из curl или скрипта. Без ключа.',
+    apiCta: 'Документация API',
   },
 
   common: {
@@ -453,6 +469,9 @@ export const ru: Dictionary = {
     yes: 'Да',
     no: 'Нет',
     tryIt: 'Попробовать в конвертере',
+    tryApi:
+      'Нужна та же конвертация из скрипта? Netscape, Cookie-Editor, Puppeteer, key-value и Cookie-заголовок есть в публичном JSON API.',
+    tryApiLink: 'Документация API',
   },
 
   pages: {
@@ -649,7 +668,7 @@ export const ru: Dictionary = {
       title: 'Claude Code постоянно разлогинивает: чиним «session expired, run /login»',
       intro:
         'Claude Code останавливается посреди задачи с сообщением «Your session has expired. Please run /login» или сам скатывается к запросу входа каждые несколько часов. Разбираем, что на самом деле значит это сообщение, и решения — по порядку, от простого к крайнему.',
-      updated: '2026-09-14',
+      updated: '2026-09-19',
       readMinutes: 6,
       sections: [
         {
@@ -705,11 +724,16 @@ export const ru: Dictionary = {
           q: 'Почему Claude Code разлогинивает после сна или на VPN?',
           a: 'Машина, спавшая или бывшая офлайн дольше окна обновления, даёт токену истечь, а VPN или прокси могут завалить запрос обновления или показать новую локацию. Переподключитесь, проверьте часы и сделайте /login один раз со стабильного соединения.',
         },
+        {
+          q: 'Можно ли получить credentials.json из скрипта?',
+          a: 'Да. POST валидной cookie сессии на /api/v1/credential. Бесплатные аккаунты не минтятся. Публичный API без ключа; в документации API есть пример curl и лимиты.',
+        },
       ],
       sourcesTitle: 'Источники',
       sources: [
         { label: 'Claude Code — справочник ошибок (code.claude.com/docs)', url: 'https://code.claude.com/docs/en/errors' },
         { label: 'Центр поддержки Anthropic — вход в Claude Code', url: 'https://support.anthropic.com/' },
+        { label: 'Публичный API claudecookie — convert, check, credential', url: 'https://claudecookie.com/api/' },
       ],
       ctaTitle: 'Жива ли ваша сессия Claude?',
       ctaBody:
@@ -721,7 +745,7 @@ export const ru: Dictionary = {
       title: 'Лимиты Claude: окна 5 часов и недели — как работают и когда сбрасываются',
       intro:
         'Claude Pro и Max ограничивают использование двумя разными окнами, и надпись «Claude usage limit reached» без внятной причины — одна из самых частых проблем. Разбираем, как именно работают оба лимита, почему общий пул расходуется быстрее, чем кажется, и когда каждое окно сбрасывается.',
-      updated: '2026-09-14',
+      updated: '2026-09-19',
       readMinutes: 8,
       sections: [
         {
@@ -766,7 +790,11 @@ export const ru: Dictionary = {
         },
         {
           q: 'Можно ли посмотреть расход, не открывая claude.ai?',
-          a: 'Да — вставьте cookie сессии в проверку на этом сайте, и она покажет тариф и оба окна. Это те же цифры, что claude.ai показывает в Settings → Usage.',
+          a: 'Да — вставьте cookie сессии в проверку на этом сайте или отправьте её POST на /api/v1/check. Оба способа покажут тариф и оба окна — те же цифры, что claude.ai в Settings → Usage.',
+        },
+        {
+          q: 'Можно ли проверить расход Claude из скрипта?',
+          a: 'Да. POST cookie на /api/v1/check. Без ключа. В документации API есть примеры curl, файл OpenAPI и опубликованные лимиты.',
         },
         {
           q: 'Чем отличается сброс 5 часов и недели?',
@@ -777,6 +805,7 @@ export const ru: Dictionary = {
       sources: [
         { label: 'Центр поддержки Anthropic — лимиты использования', url: 'https://support.anthropic.com/' },
         { label: 'Claude Code — расход и команда /cost (code.claude.com/docs)', url: 'https://code.claude.com/docs/en/costs' },
+        { label: 'Публичный API claudecookie — POST /api/v1/check', url: 'https://claudecookie.com/api/' },
       ],
       ctaTitle: 'Сколько осталось от вашего лимита?',
       ctaBody:
@@ -787,11 +816,12 @@ export const ru: Dictionary = {
     api: {
       title: 'Публичный API: конвертер, проверка и credential',
       intro:
-        'Те же конвертер, проверка сессии и credentials.json — из curl или скрипта. Без ключа. JSON по HTTPS, с опубликованными лимитами.',
-      updated: '2026-09-18',
+        'Те же конвертер, проверка сессии и credentials.json — из curl или скрипта. Без ключа. JSON по HTTPS, опубликованные лимиты, OpenAPI на /openapi.json.',
+      updated: '2026-09-19',
       readMinutes: 6,
       badge: 'HTTP JSON',
       openapiLabel: 'Описание OpenAPI (openapi.json)',
+      llmsLabel: 'Краткая сводка для машин (llms.txt)',
       convertTitle: 'Конвертация форматов cookies',
       convertBody:
         'POST вставки как { "input", "target?" }. Без target API переводит Netscape в Cookie-Editor JSON, а любой другой формат — обратно в Netscape, как сайт. Несколько аккаунтов в одной вставке режутся, конвертируются по одному и пишутся отдельными событиями convert.\n\nНеобязательный defaultDomain нужен header и key-value вставкам без домена.',
@@ -856,6 +886,18 @@ export const ru: Dictionary = {
         {
           q: 'Почему credential вернул reauth, хотя check валидный?',
           a: 'Claude может принять сессию для usage и всё равно не выдать OAuth-токены, пока вы снова не войдёте в браузере. Экспортируйте куку после этого свежего входа.',
+        },
+        {
+          q: 'Где описание OpenAPI?',
+          a: 'https://claudecookie.com/openapi.json — те же три пишущих маршрута плюс health. Начинать лучше с человеческой документации на этой странице; файл — для codegen и каталогов API.',
+        },
+        {
+          q: 'Можно ли конвертировать cookies из curl или скрипта?',
+          a: 'Да. POST { "input", "target?" } на /api/v1/convert. Без target API переводит Netscape в Cookie-Editor JSON, а любой другой формат — обратно в Netscape. До 40 наборов в одной вставке.',
+        },
+        {
+          q: 'Как проверить сессию Claude из автоматизации?',
+          a: 'POST { "cookie" } или { "cookies": ["…"] } на /api/v1/check. В ответе ok, тариф, email и окна 5 часов и недели — саму куку не возвращаем. Пачка не больше 10 наборов.',
         },
       ],
       sourcesTitle: 'Источники',

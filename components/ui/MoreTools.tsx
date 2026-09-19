@@ -1,16 +1,23 @@
 import { GoalLink } from '@/components/analytics/GoalLink'
-import { ProductIconCheck, ProductIconCredential } from '@/components/ui/ProductIcons'
+import {
+  ProductIconApi,
+  ProductIconCheck,
+  ProductIconCredential,
+} from '@/components/ui/ProductIcons'
 import { localePath, type Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 
 interface MoreToolsProps {
   locale: Locale
   dict: Dictionary
+  /** Hide the card that points at the page the visitor is already on. */
+  omit?: '/check' | '/credential' | '/api'
 }
 
-export function MoreTools({ locale, dict }: MoreToolsProps) {
+export function MoreTools({ locale, dict, omit }: MoreToolsProps) {
   const items = [
     {
+      path: '/check',
       href: localePath(locale, '/check'),
       goal: 'checker_cta_click',
       title: dict.moreTools.checkTitle,
@@ -19,6 +26,7 @@ export function MoreTools({ locale, dict }: MoreToolsProps) {
       Icon: ProductIconCheck,
     },
     {
+      path: '/credential',
       href: localePath(locale, '/credential'),
       goal: 'credential_cta_click',
       title: dict.moreTools.credTitle,
@@ -26,12 +34,23 @@ export function MoreTools({ locale, dict }: MoreToolsProps) {
       cta: dict.moreTools.credCta,
       Icon: ProductIconCredential,
     },
-  ]
+    {
+      path: '/api',
+      href: localePath(locale, '/api'),
+      goal: 'api_cta_click',
+      title: dict.moreTools.apiTitle,
+      body: dict.moreTools.apiBody,
+      cta: dict.moreTools.apiCta,
+      Icon: ProductIconApi,
+    },
+  ].filter((item) => item.path !== omit)
+
+  const columns = items.length >= 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
 
   return (
     <section className="ant-container pb-4" aria-label={dict.moreTools.title}>
       <h2 className="text-display-xs sm:text-display-s">{dict.moreTools.title}</h2>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className={`mt-6 grid gap-4 ${columns}`}>
         {items.map((item) => (
           <GoalLink
             key={item.href}

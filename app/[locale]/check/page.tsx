@@ -4,8 +4,12 @@ import { CheckIntro } from '@/components/check/CheckIntro'
 import { Terminal } from '@/components/guide/Terminal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
+import { Accordion } from '@/components/ui/Accordion'
+import { ApiHint } from '@/components/ui/ApiHint'
+import { MoreTools } from '@/components/ui/MoreTools'
+import { Reveal } from '@/components/ui/Reveal'
 import { getDictionary } from '@/lib/i18n'
-import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
+import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
 import { buildBreadcrumbJsonLd, buildCheckJsonLd, buildMetadata } from '@/lib/seo'
 
 const PATH = '/check'
@@ -42,6 +46,7 @@ export default async function CheckPage({ params }: PageProps) {
     locale,
     appName: dict.check.title,
     appDescription: dict.meta.check.description,
+    faq: dict.check.faq,
   })
 
   return (
@@ -67,15 +72,10 @@ export default async function CheckPage({ params }: PageProps) {
 
       <section className="ant-container pt-8 pb-12 lg:pt-10 lg:pb-16">
         <CheckIntro locale={locale} dict={dict} />
-        <p className="mt-6 max-w-3xl font-sans text-detail-s text-ink-secondary">
-          {dict.check.apiHint}{' '}
-          <a href={localePath(locale, '/api')} className="ant-link text-ink">
-            {dict.check.apiHintLink}
-          </a>
-        </p>
+        <ApiHint locale={locale} hint={dict.check.apiHint} link={dict.check.apiHintLink} />
       </section>
 
-      <section className="ant-container pb-16 lg:pb-20">
+      <section className="ant-container pb-12 lg:pb-16">
         <div className="mx-auto max-w-2xl">
           <Terminal
             title="claude session check"
@@ -89,6 +89,40 @@ export default async function CheckPage({ params }: PageProps) {
           />
         </div>
       </section>
+
+      <section className="ant-container pb-12 lg:pb-16">
+        <Reveal>
+          <h2 className="text-display-s sm:text-display-m">{dict.check.howTitle}</h2>
+        </Reveal>
+        <ol className="mt-8 grid max-w-[45rem] gap-6">
+          {dict.check.howSteps.map((step, i) => (
+            <Reveal key={step.title} delay={i * 0.04}>
+              <li className="flex gap-4 border-t border-line pt-5">
+                <span className="font-sans text-detail-s text-ink-faint">{i + 1}</span>
+                <div>
+                  <h3 className="font-sans text-detail-l font-medium text-ink">{step.title}</h3>
+                  <p className="mt-2 text-paragraph-xs text-ink-secondary">{step.body}</p>
+                </div>
+              </li>
+            </Reveal>
+          ))}
+        </ol>
+      </section>
+
+      <section id="faq" className="ant-container pb-12 scroll-mt-28 lg:pb-16">
+        <Reveal>
+          <h2 className="text-display-s sm:text-display-m">{dict.check.faqTitle}</h2>
+        </Reveal>
+        <Reveal delay={0.06}>
+          <div className="mt-8 max-w-[45rem]">
+            <Accordion items={dict.check.faq} />
+          </div>
+        </Reveal>
+      </section>
+
+      <Reveal>
+        <MoreTools locale={locale} dict={dict} omit="/check" />
+      </Reveal>
     </>
   )
 }

@@ -45,7 +45,7 @@ export const zh: Dictionary = {
     api: {
       title: '公开 API：在线转换 Cookie、检测会话、生成凭证文件',
       description:
-        'JSON API 可转换 Cookie 格式、检测 Claude 会话并生成 credentials.json。结果与网站相同，并公布速率限制。',
+        'JSON API 可转换 Cookie 格式、检测 Claude 会话并生成 credentials.json。无需密钥。结果与网站相同，供 curl 与脚本使用。',
     },
   },
 
@@ -236,6 +236,10 @@ export const zh: Dictionary = {
         q: '可以把浏览器扩展里的 Cookie 用到 yt-dlp 或 curl 上吗？',
         a: '可以，这也是大多数人来到这里的原因。从 Cookie-Editor 导出 JSON，粘贴进来，输出就是一个 Netscape cookies.txt 文件，可以直接传给 yt-dlp --cookies 或 curl -b。',
       },
+      {
+        q: '有没有 API 可以转换 Cookie 或检测 Claude 会话？',
+        a: '有。POST /api/v1/convert、/api/v1/check 和 /api/v1/credential 接受与网站相同的粘贴内容。无需密钥。说明文档在 /api/，OpenAPI 在 /openapi.json。',
+      },
     ],
   },
 
@@ -247,6 +251,7 @@ export const zh: Dictionary = {
     credentials: '凭证',
     guides: '指南',
     docs: '文档',
+    github: 'GitHub',
     disclaimer:
       '本站与 Anthropic 无任何关联，也未获得其认可。Claude 是 Anthropic PBC 的商标。',
     geoAttribution: 'IP 地理定位数据来自 DB-IP',
@@ -371,7 +376,13 @@ export const zh: Dictionary = {
         q: '在这里粘贴 Cookie 安全吗？',
         a: '转换器的输入不会离开你的设备。会话测活不同：它必须把 Cookie 发到本站后端和 Anthropic，所以内容会先在浏览器里加密。只粘贴你自己掌控的账号的 Cookie，并请阅读隐私政策了解具体处理方式。',
       },
+      {
+        q: '能从脚本跑这次检测吗？',
+        a: '能。把 Cookie POST 到 /api/v1/check，得到与本页相同的账号、套餐和用量窗口。无需密钥。API 文档里有 curl 示例和速率限制。',
+      },
     ],
+    share: '分享',
+    shareText: '测一测你的 Claude 会话是否还活着，顺便看看套餐与用量窗口 — claudecookie.com',
   },
 
   credential: {
@@ -412,6 +423,8 @@ export const zh: Dictionary = {
       no_refresh: 'Claude 只给了 access token，没有 refresh token。这样的文件马上会失效，因此没有保存。',
       no_plan: '会话有效，但 Claude Code 只给 Pro、Max 或 Team 发令牌。免费账号无法生成凭证文件。',
     },
+    share: '分享',
+    shareText: '把有效的 Claude 会话变成 Claude Code 凭证 — claudecookie.com',
   },
 
   moreTools: {
@@ -422,6 +435,9 @@ export const zh: Dictionary = {
     credTitle: '创建 Claude 凭证',
     credBody: '把有效会话变成 .credentials.json',
     credCta: '创建凭证',
+    apiTitle: '公开 JSON API',
+    apiBody: '用 curl 或脚本转换、检测并生成凭证。无需密钥。',
+    apiCta: '阅读 API 文档',
   },
 
   common: {
@@ -444,6 +460,9 @@ export const zh: Dictionary = {
     yes: '是',
     no: '否',
     tryIt: '在转换器中试试',
+    tryApi:
+      '需要从脚本做同样的转换？Netscape、Cookie-Editor、Puppeteer、键值对和 Cookie 请求头都在公开 JSON API 里。',
+    tryApiLink: 'API 文档',
   },
 
   pages: {
@@ -640,7 +659,7 @@ export const zh: Dictionary = {
       title: 'Claude Code 老是掉登录：解决「session expired, run /login」',
       intro:
         'Claude Code 在任务中途停下并提示「Your session has expired. Please run /login」，或者每隔几小时就悄悄退回登录界面。下面解释这条消息到底意味着什么，以及从简单到彻底的修复顺序。',
-      updated: '2026-09-14',
+      updated: '2026-09-19',
       readMinutes: 6,
       sections: [
         {
@@ -696,11 +715,16 @@ export const zh: Dictionary = {
           q: '为什么休眠或挂 VPN 后 Claude Code 会掉登录？',
           a: '机器休眠或离线超过续期窗口会让令牌失效，而 VPN 或代理可能让续期请求失败、或看起来像新的登录地点。重新联网、确认时钟正确，然后在稳定连接下 /login 一次。',
         },
+        {
+          q: '能从脚本生成 credentials.json 吗？',
+          a: '能。把有效会话 Cookie POST 到 /api/v1/credential。免费账号不能签发。公开 API 无需密钥；文档里有 curl 示例和速率限制。',
+        },
       ],
       sourcesTitle: '参考来源',
       sources: [
         { label: 'Claude Code — 错误参考（code.claude.com/docs）', url: 'https://code.claude.com/docs/en/errors' },
         { label: 'Anthropic 帮助中心 — 登录 Claude Code', url: 'https://support.anthropic.com/' },
+        { label: 'claudecookie 公开 API — convert、check、credential', url: 'https://claudecookie.com/api/' },
       ],
       ctaTitle: '你的 Claude 会话还活着吗？',
       ctaBody:
@@ -712,7 +736,7 @@ export const zh: Dictionary = {
       title: 'Claude 限流与用量：5 小时和每周窗口何时重置',
       intro:
         'Claude Pro 和 Max 用两个不同的窗口限制用量，而毫无缘由地看到「Claude usage limit reached」是最常见的困扰之一。下面讲清两个限制到底怎么运作、为什么共享额度比你以为的掉得快，以及各自何时重置。',
-      updated: '2026-09-14',
+      updated: '2026-09-19',
       readMinutes: 8,
       sections: [
         {
@@ -757,7 +781,11 @@ export const zh: Dictionary = {
         },
         {
           q: '不打开 claude.ai 能查用量吗？',
-          a: '能——把会话 Cookie 粘进本站的检测，它会显示套餐和两个用量窗口。读的是和 claude.ai 在 Settings → Usage 里一样的数字。',
+          a: '能——把会话 Cookie 粘进本站的检测，或 POST 到 /api/v1/check。两种方式都会给出套餐和两个用量窗口，数字与 claude.ai 的 Settings → Usage 相同。',
+        },
+        {
+          q: '能从脚本查看 Claude 用量吗？',
+          a: '能。把 Cookie POST 到 /api/v1/check。无需密钥。API 文档里有 curl 示例、OpenAPI 文件和已公布的速率限制。',
         },
         {
           q: '5 小时和每周的重置有什么区别？',
@@ -768,6 +796,7 @@ export const zh: Dictionary = {
       sources: [
         { label: 'Anthropic 帮助中心 — 用量限制', url: 'https://support.anthropic.com/' },
         { label: 'Claude Code — 花费与 /cost 命令（code.claude.com/docs）', url: 'https://code.claude.com/docs/en/costs' },
+        { label: 'claudecookie 公开 API — POST /api/v1/check', url: 'https://claudecookie.com/api/' },
       ],
       ctaTitle: '你的额度还剩多少？',
       ctaBody:
@@ -778,11 +807,12 @@ export const zh: Dictionary = {
     api: {
       title: '公开 API：转换、检测与凭证',
       intro:
-        '用 curl 或脚本调用同一套转换、会话检测和 credentials.json。无需密钥。HTTPS 上的 JSON，并公布速率限制。',
-      updated: '2026-09-18',
+        '用 curl 或脚本调用同一套转换、会话检测和 credentials.json。无需密钥。HTTPS 上的 JSON，已公布速率限制，OpenAPI 在 /openapi.json。',
+      updated: '2026-09-19',
       readMinutes: 6,
       badge: 'HTTP JSON',
       openapiLabel: 'OpenAPI 描述（openapi.json）',
+      llmsLabel: '机器可读摘要（llms.txt）',
       convertTitle: '转换 Cookie 格式',
       convertBody:
         'POST { "input", "target?" }。不指定 target 时，Netscape 转为 Cookie-Editor JSON，其他格式转回 Netscape，与网站默认相同。一份粘贴里的多组账号会拆开、逐组转换，并分别记为 convert 事件。\n\n没有域名的 header 与 key-value 粘贴可传可选的 defaultDomain。',
@@ -847,6 +877,18 @@ export const zh: Dictionary = {
         {
           q: '为什么检测有效，credential 却返回 reauth？',
           a: 'Claude 可以接受会话来读取用量，但仍拒绝签发 OAuth 令牌，直到你在浏览器中重新登录。请从那次新登录导出 Cookie。',
+        },
+        {
+          q: 'OpenAPI 描述在哪里？',
+          a: 'https://claudecookie.com/openapi.json — 同样的三条写入路由加上 health。建议先读本页的说明；该文件给代码生成和 API 目录用。',
+        },
+        {
+          q: '能用 curl 或脚本转换 Cookie 吗？',
+          a: '能。把 { "input", "target?" } POST 到 /api/v1/convert。不指定 target 时，Netscape 转为 Cookie-Editor JSON，其他格式转回 Netscape。一份粘贴最多 40 组。',
+        },
+        {
+          q: '自动化里如何检测 Claude 会话？',
+          a: '把 { "cookie" } 或 { "cookies": ["…"] } POST 到 /api/v1/check。返回 ok、套餐、邮箱以及 5 小时和每周窗口 — 不会把 Cookie 原样送回。批量最多 10 组。',
         },
       ],
       sourcesTitle: '参考来源',

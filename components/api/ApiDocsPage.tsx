@@ -7,10 +7,11 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { Accordion } from '@/components/ui/Accordion'
 import { CodeBlock } from '@/components/ui/CodeBlock'
+import { MoreTools } from '@/components/ui/MoreTools'
 import { Reveal } from '@/components/ui/Reveal'
 import { getDictionary } from '@/lib/i18n'
 import { SITE_URL, localePath, localeUrl, type Locale } from '@/lib/i18n/config'
-import { buildGuideJsonLd } from '@/lib/seo'
+import { buildApiJsonLd } from '@/lib/seo'
 
 const CURL = {
   convert: `curl https://claudecookie.com/api/v1/convert \\
@@ -50,22 +51,22 @@ export function ApiDocsPage({ locale }: { locale: Locale }) {
     { id: faqId, title: page.faqTitle },
   ]
 
-  const jsonLd = buildGuideJsonLd({
+  const jsonLd = buildApiJsonLd({
     locale,
-    path,
     headline: page.title,
     description,
     datePublished: '2026-09-18',
     dateModified: page.updated,
     faq: page.faq,
     trail: [
-      { name: dict.nav.docs, path: '/formats/netscape-cookies-txt' },
+      { name: dict.common.tools, path: '/' },
       { name: page.title, path },
     ],
   })
 
   const sources = [
     { label: page.openapiLabel, url: `${SITE_URL}/openapi.json` },
+    { label: page.llmsLabel, url: `${SITE_URL}/llms.txt` },
     { label: dict.nav.check, url: localeUrl(locale, '/check') },
     { label: dict.nav.getCredential, url: localeUrl(locale, '/credential') },
     { label: dict.nav.privacy, url: localeUrl(locale, '/privacy') },
@@ -80,7 +81,10 @@ export function ApiDocsPage({ locale }: { locale: Locale }) {
         title={page.title}
         intro={page.intro}
         badge={page.badge}
-        trail={[{ label: dict.nav.docs }, { label: page.title }]}
+        trail={[
+          { href: '/', label: dict.common.tools },
+          { label: page.title },
+        ]}
       />
 
       <article className="ant-container pt-6 pb-16 lg:pb-24">
@@ -218,6 +222,8 @@ export function ApiDocsPage({ locale }: { locale: Locale }) {
           </div>
         </Reveal>
       </article>
+
+      <MoreTools locale={locale} dict={dict} omit="/api" />
     </>
   )
 }

@@ -195,6 +195,12 @@ export default async function NetscapeFormatPage({ params }: PageProps) {
                 >
                   {dict.footer.converter}
                 </a>
+                <p className="mt-5 font-sans text-detail-s text-ink-secondary">
+                  {dict.common.tryApi}{' '}
+                  <a href={localePath(locale, '/api')} className="ant-link text-ink">
+                    {dict.common.tryApiLink}
+                  </a>
+                </p>
               </div>
             </Reveal>
           </div>

@@ -1,0 +1,38 @@
+# claudecookie
+
+> Convert cookie formats in the browser, check a Claude session, and mint Claude Code credentials. The same three tools are a public JSON API. No API key.
+
+The website converter never sends the paste to a server. Check and credential encrypt the paste in the browser, then send it to this site and to Anthropic. The API routes accept the same pastes over HTTPS JSON.
+
+## Tools
+
+- [Cookie converter](https://claudecookie.com/): Netscape cookies.txt ↔ Cookie-Editor, Puppeteer, key-value, Cookie header
+- [Check Claude session](https://claudecookie.com/check/): valid?, plan, 5-hour and weekly usage
+- [Get credentials.json](https://claudecookie.com/credential/): turn a Claude cookie into ~/.claude/.credentials.json
+
+## Public API
+
+- [Human docs](https://claudecookie.com/api/): curl examples, rate limits, invalidReason codes
+- [OpenAPI 3.1](https://claudecookie.com/openapi.json)
+- [GitHub (examples + README in en/ru/zh)](https://github.com/Chumbayoumba/claudecookie)
+
+POST https://claudecookie.com/api/v1/convert  - convert formats
+POST https://claudecookie.com/api/v1/check    - session + usage
+POST https://claudecookie.com/api/v1/credential - mint credentials.json
+GET  https://claudecookie.com/api/v1/health   - liveness
+
+No API key. Nginx + ingest rate limits are published on the docs page.
+
+## Guides
+
+- [Claude Code “session expired / run /login”](https://claudecookie.com/claude-code-login/)
+- [Claude 5-hour and weekly usage](https://claudecookie.com/claude-usage-limits/)
+- [Netscape cookies.txt](https://claudecookie.com/formats/netscape-cookies-txt/)
+- [JSON cookie formats](https://claudecookie.com/formats/json-cookies/)
+- [Privacy](https://claudecookie.com/privacy/)
+
+## Locales
+
+- English: https://claudecookie.com/
+- Russian: https://claudecookie.com/ru/
+- Chinese: https://claudecookie.com/zh/

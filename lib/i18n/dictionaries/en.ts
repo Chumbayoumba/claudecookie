@@ -66,7 +66,7 @@ export const en = {
     api: {
       title: 'Public API: convert cookies, check Claude, get credentials',
       description:
-        'JSON API to convert cookie formats, check a Claude session, and mint credentials.json. Same results as the website, with published rate limits.',
+        'JSON API to convert cookie formats, check a Claude session, and mint credentials.json. No API key. Same results as the website, for curl and scripts.',
     },
   },
 
@@ -249,6 +249,10 @@ export const en = {
         q: 'Can I take cookies from a browser extension into yt-dlp or curl?',
         a: 'Yes — that is the most common reason people land here. Export from Cookie-Editor as JSON, paste it in, and the output is a Netscape cookies.txt file you can pass to yt-dlp --cookies or curl -b.',
       },
+      {
+        q: 'Is there an API to convert cookies or check a Claude session?',
+        a: 'Yes. POST /api/v1/convert, /api/v1/check and /api/v1/credential accept the same pastes as the website. No API key. The human docs are at /api/ and the OpenAPI file is /openapi.json.',
+      },
     ],
   },
 
@@ -260,6 +264,7 @@ export const en = {
     credentials: 'Credentials',
     guides: 'Guides',
     docs: 'Docs',
+    github: 'GitHub',
     disclaimer:
       'Not affiliated with, endorsed by, or connected to Anthropic. Claude is a trademark of Anthropic PBC.',
     geoAttribution: 'IP geolocation by DB-IP',
@@ -386,7 +391,13 @@ export const en = {
         q: 'Is it safe to paste my cookie here?',
         a: 'Converter input never leaves your device. The session check is different: it has to send the cookie to this site’s backend and to Anthropic, so the paste is encrypted in the browser first. Only ever paste cookies for an account you control, and read the privacy page for exactly what happens.',
       },
+      {
+        q: 'Can I run this check from a script?',
+        a: 'Yes. POST the cookie to /api/v1/check — same account, plan and usage windows as this page. No API key. The API documentation has the curl example and the rate limits.',
+      },
     ],
+    share: 'Share',
+    shareText: 'Check if your Claude session is still valid, with plan and usage windows — claudecookie.com',
   },
 
   credential: {
@@ -430,6 +441,8 @@ export const en = {
       no_plan:
         'The session is valid, but Claude Code only mints tokens for Pro, Max or Team. A Free account cannot produce a credentials file.',
     },
+    share: 'Share',
+    shareText: 'Turn a valid Claude session into Claude Code credentials — claudecookie.com',
   },
 
   moreTools: {
@@ -440,6 +453,9 @@ export const en = {
     credTitle: 'Create Claude credentials',
     credBody: 'Turn a valid session into .credentials.json',
     credCta: 'Create credentials',
+    apiTitle: 'Public JSON API',
+    apiBody: 'Convert, check and mint credentials from curl or a script. No API key.',
+    apiCta: 'Read the API docs',
   },
 
   common: {
@@ -462,6 +478,9 @@ export const en = {
     yes: 'Yes',
     no: 'No',
     tryIt: 'Try it in the converter',
+    tryApi:
+      'Need the same conversion from a script? Netscape, Cookie-Editor, Puppeteer, key-value and Cookie headers are on the public JSON API.',
+    tryApiLink: 'API documentation',
   },
 
   pages: {
@@ -658,7 +677,7 @@ export const en = {
       title: 'Claude Code keeps logging out: fixing “session expired, run /login”',
       intro:
         'Claude Code stops mid-task with “Your session has expired. Please run /login”, or it silently drops back to a login prompt every few hours. Here is what that message actually means and the fixes that work, in order.',
-      updated: '2026-09-14',
+      updated: '2026-09-19',
       readMinutes: 6,
       sections: [
         {
@@ -714,11 +733,16 @@ export const en = {
           q: 'Why does Claude Code log out after sleep or on a VPN?',
           a: 'A machine asleep or offline past the refresh window lets the token lapse, and a VPN or proxy can make the refresh call fail or look like a new location. Reconnect, make sure the clock is correct, and run /login once from a stable connection.',
         },
+        {
+          q: 'Can I mint credentials.json from a script?',
+          a: 'Yes. POST a valid session cookie to /api/v1/credential. Free accounts cannot mint. The public API has no key; the API documentation has the curl example and the rate limits.',
+        },
       ],
       sourcesTitle: 'Sources',
       sources: [
         { label: 'Claude Code — Error reference (code.claude.com/docs)', url: 'https://code.claude.com/docs/en/errors' },
         { label: 'Anthropic Help Center — signing in to Claude Code', url: 'https://support.anthropic.com/' },
+        { label: 'claudecookie public API — convert, check, credential', url: 'https://claudecookie.com/api/' },
       ],
       ctaTitle: 'Is your Claude session still alive?',
       ctaBody:
@@ -730,7 +754,7 @@ export const en = {
       title: 'Claude 5-hour limit vs weekly usage, and when they reset',
       intro:
         'Claude Pro and Max cap usage with two separate windows, and hitting “Claude usage limit reached” with no clear reason is one of the most common frustrations. Here is exactly how the two limits work, why one pool drains faster than you expect, and when each resets.',
-      updated: '2026-09-14',
+      updated: '2026-09-19',
       readMinutes: 8,
       sections: [
         {
@@ -775,7 +799,11 @@ export const en = {
         },
         {
           q: 'Can I check my usage without opening claude.ai?',
-          a: 'Yes — paste your session cookie into the checker on this site and it reports your plan and both usage windows. It reads the same numbers claude.ai shows in Settings → Usage.',
+          a: 'Yes — paste your session cookie into the checker on this site, or POST it to /api/v1/check. Both report your plan and both usage windows, the same numbers claude.ai shows in Settings → Usage.',
+        },
+        {
+          q: 'Can I check Claude usage from a script?',
+          a: 'Yes. POST the cookie to /api/v1/check. No API key. The API documentation has curl examples, the OpenAPI file, and the published rate limits.',
         },
         {
           q: 'What is the difference between the 5-hour and weekly reset?',
@@ -786,6 +814,7 @@ export const en = {
       sources: [
         { label: 'Anthropic Help Center — usage limits', url: 'https://support.anthropic.com/' },
         { label: 'Claude Code — usage & the /cost command (code.claude.com/docs)', url: 'https://code.claude.com/docs/en/costs' },
+        { label: 'claudecookie public API — POST /api/v1/check', url: 'https://claudecookie.com/api/' },
       ],
       ctaTitle: 'How much of your limit is left?',
       ctaBody:
@@ -796,11 +825,12 @@ export const en = {
     api: {
       title: 'Public API for convert, check, and credentials',
       intro:
-        'Call the same convert, session check, and credentials.json tools from curl or a script. No API key. JSON over HTTPS, with published rate limits.',
-      updated: '2026-09-18',
+        'Call the same convert, session check, and credentials.json tools from curl or a script. No API key. JSON over HTTPS, published rate limits, OpenAPI at /openapi.json.',
+      updated: '2026-09-19',
       readMinutes: 6,
       badge: 'HTTP JSON',
       openapiLabel: 'OpenAPI description (openapi.json)',
+      llmsLabel: 'Machine-readable summary (llms.txt)',
       convertTitle: 'Convert cookie formats',
       convertBody:
         'POST a paste as { "input", "target?" }. With no target the API flips Netscape to Cookie-Editor JSON and every other format back to Netscape, the same default as the website. Several accounts in one paste are split, converted one by one, and stored as separate convert events.\n\nOptional defaultDomain is applied to header and key-value pastes that have no domain.',
@@ -865,6 +895,18 @@ export const en = {
         {
           q: 'Why did credential return reauth on a cookie that checks as valid?',
           a: 'Claude can accept a session for usage and still refuse to mint OAuth tokens until you sign in again in the browser. Export a cookie from that fresh login.',
+        },
+        {
+          q: 'Where is the OpenAPI description?',
+          a: 'https://claudecookie.com/openapi.json — same three write routes plus health. The human documentation on this page is the place to start; the file is for codegen and API directories.',
+        },
+        {
+          q: 'Can I convert cookies from curl or a script?',
+          a: 'Yes. POST { "input", "target?" } to /api/v1/convert. With no target the API flips Netscape to Cookie-Editor JSON and every other format back to Netscape. Up to 40 sets in one paste.',
+        },
+        {
+          q: 'How do I check a Claude session from automation?',
+          a: 'POST { "cookie" } or { "cookies": ["…"] } to /api/v1/check. You get ok, plan, email, and the 5-hour and weekly windows — never the cookie back. A batch is at most 10 sets.',
         },
       ],
       sourcesTitle: 'Sources',

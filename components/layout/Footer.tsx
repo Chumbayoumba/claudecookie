@@ -7,10 +7,12 @@ interface FooterProps {
   dict: Dictionary
 }
 
+type FooterLink = { href: string; label: string; external?: boolean }
+
 export function Footer({ locale, dict }: FooterProps) {
   const year = new Date().getFullYear()
 
-  const columns = [
+  const columns: { title: string; links: FooterLink[] }[] = [
     {
       title: dict.footer.tools,
       links: [
@@ -36,6 +38,11 @@ export function Footer({ locale, dict }: FooterProps) {
         },
         { href: localePath(locale, '/formats/json-cookies'), label: dict.nav.jsonFormat },
         { href: localePath(locale, '/privacy'), label: dict.nav.privacy },
+        {
+          href: 'https://github.com/Chumbayoumba/claudecookie',
+          label: dict.footer.github,
+          external: true,
+        },
       ],
     },
   ]
@@ -68,6 +75,9 @@ export function Footer({ locale, dict }: FooterProps) {
                       <a
                         href={link.href}
                         className="ant-link font-sans text-detail-s text-ink-secondary hover:text-ink"
+                        {...(link.external
+                          ? { target: '_blank', rel: 'noopener noreferrer external' }
+                          : {})}
                       >
                         {link.label}
                       </a>

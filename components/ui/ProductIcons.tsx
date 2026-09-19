@@ -77,3 +77,23 @@ export function ProductIconCredential({ className }: IconProps) {
     </svg>
   )
 }
+
+/** Brackets — the public JSON API. */
+export function ProductIconApi({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={cn('size-5', className)}
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M8.2 6.5 4.8 12l3.4 5.5M15.8 6.5 19.2 12l-3.4 5.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}

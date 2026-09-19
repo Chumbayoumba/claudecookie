@@ -4,9 +4,12 @@ import { CredentialTool } from '@/components/credential/CredentialTool'
 import { Terminal } from '@/components/guide/Terminal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { JsonLd } from '@/components/seo/JsonLd'
+import { ApiHint } from '@/components/ui/ApiHint'
+import { MoreTools } from '@/components/ui/MoreTools'
 import { PageEnter } from '@/components/ui/PageEnter'
+import { Reveal } from '@/components/ui/Reveal'
 import { getDictionary } from '@/lib/i18n'
-import { LOCALES, isLocale, localePath, type Locale } from '@/lib/i18n/config'
+import { LOCALES, isLocale, type Locale } from '@/lib/i18n/config'
 import { buildBreadcrumbJsonLd, buildMetadata } from '@/lib/seo'
 
 const PATH = '/credential'
@@ -63,17 +66,16 @@ export default async function CredentialPage({ params }: PageProps) {
         <PageEnter>
           <div className="max-w-3xl">
             <CredentialTool locale={locale} dict={dict} />
-            <p className="mt-6 font-sans text-detail-s text-ink-secondary">
-              {dict.pages.credential.apiHint}{' '}
-              <a href={localePath(locale, '/api')} className="ant-link text-ink">
-                {dict.pages.credential.apiHintLink}
-              </a>
-            </p>
+            <ApiHint
+              locale={locale}
+              hint={dict.pages.credential.apiHint}
+              link={dict.pages.credential.apiHintLink}
+            />
           </div>
         </PageEnter>
       </section>
 
-      <section className="ant-container pb-16 lg:pb-20">
+      <section className="ant-container pb-12 lg:pb-16">
         <div className="mx-auto max-w-2xl">
           <Terminal
             title="claude credentials"
@@ -87,6 +89,10 @@ export default async function CredentialPage({ params }: PageProps) {
           />
         </div>
       </section>
+
+      <Reveal>
+        <MoreTools locale={locale} dict={dict} omit="/credential" />
+      </Reveal>
     </>
   )
 }

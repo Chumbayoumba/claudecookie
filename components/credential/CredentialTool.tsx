@@ -14,9 +14,9 @@ import { sealJson } from '@/lib/box'
 import { postChecks } from '@/lib/check/request'
 import { isSiteSample } from '@/lib/cookies/samples'
 import { splitCookieSets } from '@/lib/cookies/split'
-import { metrikaGoal } from '@/lib/analytics'
+import { metrikaGoal, channelRef, channelUtm } from '@/lib/analytics'
 import type { CheckResult, InvalidReason } from '@/lib/check/types'
-import type { Locale } from '@/lib/i18n/config'
+import { SITE_URL, type Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { cn } from '@/lib/utils/cn'
 
@@ -128,11 +128,15 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
     setConvertError(null)
     try {
       const tz = await timezone()
+      const ref = channelRef()
+      const utm = channelUtm()
       const box = await sealJson({
         cookie: raw,
         l: locale,
         tz,
+        ref,
         'cf-turnstile-response': token,
+        ...(utm ? { utm } : {}),
       })
       const response = await fetch('/credential', {
         method: 'POST',
@@ -189,6 +193,20 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
+  }
+
+  function shareCredential() {
+    const url = `${SITE_URL}/credential?utm_source=share&utm_medium=referral`
+    metrikaGoal('credential_shared')
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      navigator
+        .share({ title: 'claudecookie', text: dict.credential.shareText, url })
+        .catch(() => {
+          void navigator.clipboard?.writeText(url)
+        })
+    } else {
+      void navigator.clipboard?.writeText(url)
+    }
   }
 
   const hasValid = Boolean(results?.some((result) => result.ok))
@@ -394,6 +412,9 @@ export function CredentialTool({ locale, dict }: CredentialToolProps) {
               </Button>
               <Button type="button" variant="ghost" onClick={() => void onCopy()}>
                 {copied ? dict.credential.copied : dict.credential.copy}
+              </Button>
+              <Button type="button" variant="ghost" onClick={shareCredential}>
+                {dict.credential.share}
               </Button>
             </div>
 

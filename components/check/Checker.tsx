@@ -19,6 +19,7 @@ import { metrikaGoal } from '@/lib/analytics'
 import { cookieFileSlug, validCookieFiles } from '@/lib/check/filename'
 import { postChecks } from '@/lib/check/request'
 import type { CheckResult } from '@/lib/check/types'
+import { SITE_URL } from '@/lib/i18n/config'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/dictionaries/en'
 import { Button } from '@/components/ui/Button'
@@ -155,6 +156,20 @@ export function Checker({ locale, dict }: CheckerProps) {
   function downloadOne(row: CheckRow) {
     const name = `${cookieFileSlug(row.result.email, row.result.planLabel)}.txt`
     downloadText(row.raw, name, 'text/plain')
+  }
+
+  function shareCheck() {
+    const url = `${SITE_URL}/check?utm_source=share&utm_medium=referral`
+    metrikaGoal('check_shared')
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      navigator
+        .share({ title: 'claudecookie', text: dict.check.shareText, url })
+        .catch(() => {
+          void navigator.clipboard?.writeText(url)
+        })
+    } else {
+      void navigator.clipboard?.writeText(url)
+    }
   }
 
   return (
@@ -307,18 +322,21 @@ export function Checker({ locale, dict }: CheckerProps) {
               ) : (
                 <span />
               )}
-              {validRows.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" variant="ghost" onClick={shareCheck}>
+                  {dict.check.share}
+                </Button>
+                {validRows.length > 0 ? (
                   <Button type="button" size="sm" variant="secondary" onClick={downloadJoined}>
                     {dict.check.downloadValid}
                   </Button>
-                  {validRows.length > 1 ? (
-                    <Button type="button" size="sm" variant="ghost" onClick={downloadEach}>
-                      {dict.check.downloadValidEach}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
+                ) : null}
+                {validRows.length > 1 ? (
+                  <Button type="button" size="sm" variant="ghost" onClick={downloadEach}>
+                    {dict.check.downloadValidEach}
+                  </Button>
+                ) : null}
+              </div>
             </div>
             {rows.map((row, i) => (
               <CheckReport

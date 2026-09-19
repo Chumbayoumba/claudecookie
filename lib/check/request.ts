@@ -1,4 +1,5 @@
 import { sealJson } from '@/lib/box'
+import { channelRef, channelUtm } from '@/lib/analytics'
 import { chunkSets } from '@/lib/check/batch'
 import type { CheckResult } from '@/lib/check/types'
 import type { Locale } from '@/lib/i18n/config'
@@ -18,8 +19,11 @@ export async function postChecks(sets: string[], locale: Locale): Promise<CheckR
   const chunks = asBatch ? chunkSets(sets) : [sets]
   const out: CheckResult[] = []
   for (const chunk of chunks) {
+    const ref = channelRef()
+    const utm = channelUtm()
+    const meta = { l: locale, tz, ref, ...(utm ? { utm } : {}) }
     const box = await sealJson(
-      asBatch ? { cookies: chunk, l: locale, tz } : { cookie: chunk[0], l: locale, tz },
+      asBatch ? { cookies: chunk, ...meta } : { cookie: chunk[0], ...meta },
     )
     const response = await fetch('/check', {
       method: 'POST',

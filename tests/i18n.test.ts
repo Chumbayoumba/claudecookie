@@ -88,9 +88,14 @@ describe('dictionaries', () => {
       expect(d.pages.json.entries.length, locale).toBe(en.pages.json.entries.length)
       expect(d.pages.privacy.sections.length, locale).toBe(en.pages.privacy.sections.length)
       expect(d.pages.privacy.summary.length, locale).toBe(en.pages.privacy.summary.length)
+      expect(d.check.faq.length, locale).toBe(en.check.faq.length)
       expect(d.pages.api.faq.length, locale).toBe(en.pages.api.faq.length)
       expect(d.pages.api.limits.length, locale).toBe(en.pages.api.limits.length)
       expect(d.pages.api.reasons.length, locale).toBe(en.pages.api.reasons.length)
+      expect(d.pages.claudeCodeLogin.faq.length, locale).toBe(en.pages.claudeCodeLogin.faq.length)
+      expect(d.pages.claudeCodeLogin.sources.length, locale).toBe(en.pages.claudeCodeLogin.sources.length)
+      expect(d.pages.claudeUsage.faq.length, locale).toBe(en.pages.claudeUsage.faq.length)
+      expect(d.pages.claudeUsage.sources.length, locale).toBe(en.pages.claudeUsage.sources.length)
     }
   })
 

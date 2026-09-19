@@ -3,13 +3,25 @@
   "info": {
     "title": "claudecookie public API",
     "version": "1.0.0",
-    "description": "Convert cookie formats, check a Claude session, and mint a Claude Code credentials.json. No API key. The website converter still runs in the browser; these routes send the paste to the same ingest service over HTTPS.",
-    "contact": { "url": "https://claudecookie.com/api/" }
+    "description": "Public JSON API for automation: convert cookie formats (Netscape cookies.txt, Cookie-Editor, Puppeteer, key-value, Cookie header), check a Claude session (plan, 5-hour and weekly usage), and mint a Claude Code credentials.json. No API key. Rate limits are published on https://claudecookie.com/api/. The website converter still runs in the browser; these routes send the paste to the same ingest service over HTTPS.",
+    "contact": { "url": "https://claudecookie.com/api/" },
+    "license": { "name": "Use at your own risk", "url": "https://claudecookie.com/privacy/" }
   },
+  "externalDocs": {
+    "description": "Human API documentation (curl examples, rate limits, invalidReason codes)",
+    "url": "https://claudecookie.com/api/"
+  },
+  "tags": [
+    { "name": "convert", "description": "Cookie format conversion" },
+    { "name": "check", "description": "Claude session check" },
+    { "name": "credential", "description": "Claude Code credentials.json" },
+    { "name": "health", "description": "Liveness" }
+  ],
   "servers": [{ "url": "https://claudecookie.com" }],
   "paths": {
     "/api/v1/health": {
       "get": {
+        "tags": ["health"],
         "summary": "Liveness",
         "operationId": "health",
         "responses": {
@@ -30,6 +42,7 @@
     },
     "/api/v1/convert": {
       "post": {
+        "tags": ["convert"],
         "summary": "Convert cookie formats",
         "operationId": "convertCookies",
         "requestBody": {
@@ -56,6 +69,7 @@
     },
     "/api/v1/check": {
       "post": {
+        "tags": ["check"],
         "summary": "Check a Claude session cookie",
         "operationId": "checkSession",
         "requestBody": {
@@ -82,6 +96,7 @@
     },
     "/api/v1/credential": {
       "post": {
+        "tags": ["credential"],
         "summary": "Mint a Claude Code credentials.json",
         "operationId": "createCredential",
         "requestBody": {

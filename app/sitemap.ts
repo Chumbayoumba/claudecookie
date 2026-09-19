@@ -14,14 +14,14 @@ export const dynamic = 'force-static'
  * a route's date only when that page's content actually changes.
  */
 const ROUTES = [
-  { path: '/', priority: 1, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
-  { path: '/api', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-18' },
-  { path: '/check', priority: 0.7, changeFrequency: 'monthly' as const, lastModified: '2026-09-18' },
-  { path: '/claude-code-login', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
-  { path: '/claude-usage-limits', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-17' },
-  { path: '/credential', priority: 0.7, changeFrequency: 'monthly' as const, lastModified: '2026-09-18' },
-  { path: '/formats/netscape-cookies-txt', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-17' },
-  { path: '/formats/json-cookies', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-14' },
+  { path: '/', priority: 1, changeFrequency: 'monthly' as const, lastModified: '2026-09-19' },
+  { path: '/api', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-19' },
+  { path: '/check', priority: 0.7, changeFrequency: 'monthly' as const, lastModified: '2026-09-19' },
+  { path: '/claude-code-login', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-19' },
+  { path: '/claude-usage-limits', priority: 0.8, changeFrequency: 'monthly' as const, lastModified: '2026-09-19' },
+  { path: '/credential', priority: 0.7, changeFrequency: 'monthly' as const, lastModified: '2026-09-19' },
+  { path: '/formats/netscape-cookies-txt', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-19' },
+  { path: '/formats/json-cookies', priority: 0.8, changeFrequency: 'yearly' as const, lastModified: '2026-09-19' },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' as const, lastModified: '2026-09-18' },
 ]
 
