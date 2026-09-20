@@ -1,0 +1,277 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "claudecookie public API",
+    "version": "1.0.0",
+    "description": "Public JSON API for automation: convert cookie formats (Netscape cookies.txt, Cookie-Editor, Puppeteer, key-value, Cookie header), check a Claude session (plan, 5-hour and weekly usage), and mint a Claude Code credentials.json. No API key. Rate limits are published on https://claudecookie.com/api/. The website converter still runs in the browser; these routes send the paste to the same ingest service over HTTPS.",
+    "contact": { "url": "https://claudecookie.com/api/" },
+    "license": { "name": "Use at your own risk", "url": "https://claudecookie.com/privacy/" }
+  },
+  "externalDocs": {
+    "description": "Human API documentation (curl examples, rate limits, invalidReason codes)",
+    "url": "https://claudecookie.com/api/"
+  },
+  "tags": [
+    { "name": "convert", "description": "Cookie format conversion" },
+    { "name": "check", "description": "Claude session check" },
+    { "name": "credential", "description": "Claude Code credentials.json" },
+    { "name": "health", "description": "Liveness" }
+  ],
+  "servers": [{ "url": "https://claudecookie.com" }],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": ["health"],
+        "summary": "Liveness",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean", "const": true } },
+                  "required": ["ok"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/convert": {
+      "post": {
+        "tags": ["convert"],
+        "summary": "Convert cookie formats",
+        "operationId": "convertCookies",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ConvertRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Converted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConvertResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ApiError" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/api/v1/check": {
+      "post": {
+        "tags": ["check"],
+        "summary": "Check a Claude session cookie",
+        "operationId": "checkSession",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CheckRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Check result or batch of results",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CheckResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ApiError" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/api/v1/credential": {
+      "post": {
+        "tags": ["credential"],
+        "summary": "Mint a Claude Code credentials.json",
+        "operationId": "createCredential",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CredentialRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials file or a check failure",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CredentialResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ApiError" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CookieFormat": {
+        "type": "string",
+        "enum": ["netscape", "cookie-editor", "puppeteer", "key-value", "header"]
+      },
+      "ConvertRequest": {
+        "type": "object",
+        "required": ["input"],
+        "properties": {
+          "input": { "type": "string", "description": "Cookie paste in any supported format. Several sets are split the same way as the website." },
+          "target": { "$ref": "#/components/schemas/CookieFormat" },
+          "defaultDomain": { "type": "string" },
+          "l": { "type": "string", "enum": ["en", "ru", "zh"] },
+          "tz": { "type": "string" }
+        }
+      },
+      "ConvertResponse": {
+        "type": "object",
+        "required": ["ok", "detected", "target", "output", "issues", "stats", "n"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "detected": { "anyOf": [{ "$ref": "#/components/schemas/CookieFormat" }, { "type": "null" }] },
+          "target": { "$ref": "#/components/schemas/CookieFormat" },
+          "output": { "type": "string" },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "level": { "type": "string", "enum": ["error", "warning"] },
+                "message": { "type": "string" },
+                "line": { "type": "integer" }
+              }
+            }
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "total": { "type": "integer" },
+              "domains": { "type": "integer" },
+              "expired": { "type": "integer" },
+              "session": { "type": "integer" },
+              "secure": { "type": "integer" },
+              "httpOnly": { "type": "integer" }
+            }
+          },
+          "n": { "type": "integer" },
+          "invalidReason": { "type": "string" }
+        }
+      },
+      "CheckRequest": {
+        "type": "object",
+        "properties": {
+          "cookie": { "type": "string" },
+          "cookies": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
+          "l": { "type": "string", "enum": ["en", "ru", "zh"] },
+          "tz": { "type": "string" }
+        }
+      },
+      "CheckResult": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "invalidReason": { "type": "string" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "planLabel": { "type": "string" },
+          "session": { "type": "object", "additionalProperties": true },
+          "weekly": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "CheckResponse": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/CheckResult" },
+          {
+            "type": "object",
+            "required": ["results"],
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/CheckResult" }
+              }
+            }
+          }
+        ]
+      },
+      "CredentialRequest": {
+        "type": "object",
+        "required": ["cookie"],
+        "properties": {
+          "cookie": { "type": "string" },
+          "l": { "type": "string", "enum": ["en", "ru", "zh"] },
+          "tz": { "type": "string" }
+        }
+      },
+      "CredentialResponse": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "invalidReason": { "type": "string" },
+          "filename": { "type": "string" },
+          "credentials": {
+            "type": "object",
+            "properties": {
+              "claudeAiOauth": { "type": "object", "additionalProperties": true }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "ApiError": {
+        "description": "Bad request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["ok", "invalidReason"],
+              "properties": {
+                "ok": { "type": "boolean", "const": false },
+                "invalidReason": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Too many requests",
+        "headers": {
+          "Retry-After": {
+            "schema": { "type": "integer" },
+            "description": "Seconds until the sliding window has a free slot"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["ok", "invalidReason"],
+              "properties": {
+                "ok": { "type": "boolean", "const": false },
+                "invalidReason": { "type": "string", "const": "rate_limited" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
