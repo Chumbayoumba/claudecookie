@@ -54,14 +54,14 @@ export const en = {
         'Paste a Claude session cookie in any format and download ~/.claude/.credentials.json for Claude Code.',
     },
     claudeCodeLogin: {
-      title: 'Claude Code “session expired / run /login” — how to fix',
+      title: 'Claude Code login expired: please run /login — fix',
       description:
-        'Why Claude Code logs you out with “Your session has expired. Please run /login”, the /logout → /login fix, the ANTHROPIC_API_KEY trap, and how to clear ~/.claude/.credentials.json.',
+        'Claude Code login expired? Fix “claude code login expired please run /login” and “claude code please run /login” with /logout → /login, API-key checks, and credential cleanup.',
     },
     claudeUsage: {
-      title: 'Claude 5-hour limit and weekly usage, when they reset',
+      title: 'Claude 5-hour limit, peak hours and Pro usage limits',
       description:
-        'How Claude Pro and Max meter the rolling 5-hour limit and the weekly cap, shared across claude.ai, Claude Code and Desktop — why you hit “usage limit reached”, and when it resets.',
+        'Claude 5-hour limit explained with the Claude peak hours policy, Claude off-peak hours, and Claude Pro usage limits for Free, Pro, and Max plans.',
     },
     api: {
       title: 'Public API: convert cookies, check Claude, get credentials',
@@ -676,37 +676,37 @@ export const en = {
     claudeCodeLogin: {
       title: 'Claude Code keeps logging out: fixing “session expired, run /login”',
       intro:
-        'Claude Code stops mid-task with “Your session has expired. Please run /login”, or it silently drops back to a login prompt every few hours. Here is what that message actually means and the fixes that work, in order.',
-      updated: '2026-09-19',
+        'Claude Code login expired? The messages “claude code please run /login” and “Your session has expired. Please run /login” mean the stored sign-in can no longer refresh. Here is why it happens and a short recovery path that works in order.',
+      updated: '2026-09-20',
       readMinutes: 6,
       sections: [
         {
-          title: 'What “session expired” actually means',
+          title: 'Why Claude Code says “please run /login”',
           body:
             'Claude Code does not use your password on every request. When you run /login it completes a browser sign-in and stores an OAuth token in ~/.claude/.credentials.json (or your OS keychain). That access token is short-lived and is refreshed in the background using a longer-lived refresh token.\n\n“Your session has expired. Please run /login” means the token Claude Code holds is dead and the background refresh was refused. It is not a bug in your code or your prompt — it is an authentication state that has to be re-established.',
         },
         {
-          title: 'The fix that works most of the time: /logout then /login',
+          title: 'Step 1: run /logout, then /login',
           body:
             'Inside Claude Code, run /login and complete the browser sign-in. If that alone does not stick, run /logout first to discard the stale credentials, then /login again from a clean state. A clean logout-then-login cycle resolves the large majority of cases.\n\nIf the browser step opens but never completes, copy the authorization URL into a browser where you are already signed in to claude.ai, approve it, and paste the code back into the terminal.',
         },
         {
-          title: 'If it loops or comes back within hours',
+          title: 'Step 2: if the session expires again',
           body:
             'When /login succeeds but you are logged out again soon after, the refresh itself is failing. Common causes: you changed your Anthropic password, you signed out of claude.ai (or “sign out of all sessions”) elsewhere, an admin or the account revoked sessions, the machine was asleep or offline past the refresh window, or the system clock is wrong — a clock that has drifted makes a valid token look expired.\n\nFix the underlying cause first: set the clock to sync automatically, and avoid signing out of every session on the web while Claude Code is running. Then do one clean /logout → /login.',
         },
         {
-          title: 'The ANTHROPIC_API_KEY trap',
+          title: 'Step 3: check the ANTHROPIC_API_KEY trap',
           body:
             'The single most common cause of a login that “won’t stick” is an ANTHROPIC_API_KEY environment variable set in your shell profile. Claude Code will prefer the API key over your subscription login, and that pay-as-you-go key can be expired, rate-limited or scoped differently — which surfaces as auth errors even though your subscription is fine.\n\nCheck for it with `echo $ANTHROPIC_API_KEY` (macOS/Linux) or `echo %ANTHROPIC_API_KEY%` (Windows). If it is set and you meant to use your Pro/Max subscription, remove it from your shell profile (~/.zshrc, ~/.bashrc, or the Windows environment variables) and restart the terminal, then /login.',
         },
         {
-          title: 'Last resort: delete the credentials file',
+          title: 'Step 4: clear credentials only as a last resort',
           body:
             'If /logout → /login still loops, the stored credential is corrupt — a partially written ~/.claude/.credentials.json, or a macOS Keychain entry that is locked or not writable. Close Claude Code, delete ~/.claude/.credentials.json, reopen, and run /login to re-authenticate from scratch. On macOS you may also need to remove the “Claude Code” item from Keychain Access.\n\nThis file holds live credentials — treat it like a password file, and never paste its contents into a chat or a screenshot.',
         },
         {
-          title: 'Check whether your session is actually alive',
+          title: 'Step 5: check whether the Claude session is alive',
           body:
             'Before you spend time on fixes, it helps to know whether the underlying claude.ai session is still valid at all — the same account Claude Code signs into. Export your claude.ai session cookie and run it through the checker below: it tells you in seconds whether the session is live, which plan it is on, and how much of your 5-hour and weekly limits are left, so you can tell an expired session apart from a hit usage limit.',
         },
@@ -753,8 +753,8 @@ export const en = {
     claudeUsage: {
       title: 'Claude 5-hour limit vs weekly usage, and when they reset',
       intro:
-        'Claude Pro and Max cap usage with two separate windows, and hitting “Claude usage limit reached” with no clear reason is one of the most common frustrations. Here is exactly how the two limits work, why one pool drains faster than you expect, and when each resets.',
-      updated: '2026-09-19',
+        'Claude Pro and Max cap usage with two separate windows, and hitting “Claude usage limit reached” with no clear reason is one of the most common frustrations. Here is how the Claude 5-hour limit, weekly cap, peak-hours policy, and plan differences fit together.',
+      updated: '2026-09-20',
       readMinutes: 8,
       sections: [
         {
@@ -778,11 +778,25 @@ export const en = {
             'The plans differ mainly in how large those windows are. Pro ($20/mo) is sized for everyday chat and light coding. Max at 5× and 20× multiply the caps for heavy Claude Code use. Because everything shares one pool, the practical question is not “which app” but “how much total, on which model” — the /cost command in Claude Code shows what the current session has spent.',
         },
         {
+          title: 'Claude peak hours policy and off-peak hours',
+          body:
+            'The current Claude peak hours policy is different from the older reports about a weekday limit reduction. Anthropic announced on May 6, 2026 that it removed the peak-hours limit reduction for Claude Code on Pro and Max and doubled Claude Code’s five-hour rate limits. The old advice to save heavy work for Claude off-peak hours is therefore historical for those Claude Code plans, not a guaranteed multiplier today.\n\nLimits can still vary by plan, model, surface, and account state. Treat the Usage screen in Claude as the source of truth, and do not promise users a fixed number of messages from the clock alone.',
+        },
+        {
           title: 'See your own usage right now',
           body:
             'The numbers that matter are your own, and you do not have to open claude.ai to read them. Export your claude.ai session cookie and run it through the checker below — it reports your plan and exactly how much of the 5-hour and weekly windows you have used, and when each resets. That is the fastest way to tell whether you are actually rate-limited or just hit a transient error.',
         },
       ],
+      comparisonTable: {
+        caption: 'Plan snapshot: usage is dynamic and the account Usage screen wins',
+        headers: ['Plan', '5-hour usage', 'Weekly usage', 'Practical note'],
+        rows: [
+          ['Free', 'Limited, dynamic allowance', 'Plan-specific and may change', 'Use the Usage screen for the current allowance.'],
+          ['Pro', 'At least 5× Free per session; model and token dependent', 'Fixed weekly cap shown in the account', 'Standard paid capacity for regular chat and lighter coding.'],
+          ['Max', '5× or 20× Pro capacity, depending on tier', 'Higher weekly cap shown in the account', 'Designed for heavier Claude and Claude Code workloads.'],
+        ],
+      },
       faqTitle: 'Claude usage limits — questions',
       faq: [
         {

@@ -33,14 +33,14 @@ export const zh: Dictionary = {
         '粘贴任意格式的 Claude 会话 Cookie，下载 Claude Code 使用的 ~/.claude/.credentials.json 凭证文件。',
     },
     claudeCodeLogin: {
-      title: 'Claude Code 登录失败：session expired /login',
+      title: 'Claude Code 登录过期：请运行 /login 修复指南',
       description:
-        'Claude Code 提示 session expired 或 run /login、登录失败时怎么处理：/logout 再 /login、ANTHROPIC_API_KEY 陷阱，以及如何清理 ~/.claude/.credentials.json。',
+        'Claude Code 登录过期、提示 please run /login 时怎么处理：/logout 再 /login、检查 ANTHROPIC_API_KEY，以及如何清理 ~/.claude/.credentials.json。',
     },
     claudeUsage: {
-      title: 'Claude 限流 usage limits：5 小时额度何时重置',
+      title: 'Claude 5 小时限流、峰值时段与 Pro 限额完整指南',
       description:
-        'Claude Pro 与 Max 的限流怎么算：滚动 5 小时窗口和每周额度，在 claude.ai、Claude Code 和 Desktop 之间共享，为什么会「用量已达上限」，以及何时重置。',
+        '说明 Claude 5 小时限流、Claude peak hours policy、Claude off-peak hours，以及 Free、Pro、Max 的 Claude Pro usage limits。',
     },
     api: {
       title: '公开 API：在线转换 Cookie、检测会话、生成凭证文件',
@@ -658,37 +658,37 @@ export const zh: Dictionary = {
     claudeCodeLogin: {
       title: 'Claude Code 老是掉登录：解决「session expired, run /login」',
       intro:
-        'Claude Code 在任务中途停下并提示「Your session has expired. Please run /login」，或者每隔几小时就悄悄退回登录界面。下面解释这条消息到底意味着什么，以及从简单到彻底的修复顺序。',
-      updated: '2026-09-19',
+        'Claude Code 登录过期了吗？「claude code please run /login」和「Your session has expired. Please run /login」表示保存的登录状态无法继续刷新。下面按顺序说明原因和恢复步骤。',
+      updated: '2026-09-20',
       readMinutes: 6,
       sections: [
         {
-          title: '「会话已过期」到底是什么意思',
+          title: '为什么 Claude Code 会提示「please run /login」',
           body:
             'Claude Code 并不会在每个请求里发送你的密码。当你运行 /login 完成浏览器登录后，它会把一个 OAuth 令牌存到 ~/.claude/.credentials.json（或系统钥匙串）。这个访问令牌有效期很短，靠一个更长效的刷新令牌在后台续期。\n\n「Your session has expired. Please run /login」意味着 Claude Code 持有的令牌已失效，而后台续期被拒绝了。这不是你代码或提示词的 bug，而是需要重新建立的登录状态。',
         },
         {
-          title: '最常见有效的做法：先 /logout 再 /login',
+          title: '第 1 步：运行 /logout，再 /login',
           body:
             '在 Claude Code 里运行 /login 并完成浏览器登录。如果单独 /login 不生效，先 /logout 丢弃过期凭证，再从干净状态 /login。一个干净的 logout→login 循环能解决绝大多数情况。\n\n如果浏览器步骤打开却无法完成，把授权链接复制到一个已登录 claude.ai 的浏览器里确认，再把返回的代码粘贴回终端。',
         },
         {
-          title: '如果反复出现或几小时后又掉',
+          title: '第 2 步：如果会话再次过期',
           body:
             '当 /login 成功、却很快又被登出时，是续期本身失败了。常见原因：你改了 Anthropic 密码、在别处退出了 claude.ai（或「退出所有会话」）、账号或管理员吊销了会话、机器休眠或离线超过了续期窗口，或者系统时钟不对——时钟漂移会让有效令牌看起来像过期。\n\n先解决根因：把时钟设为自动同步，Claude Code 运行时别在网页端退出全部会话。然后做一次干净的 /logout → /login。',
         },
         {
-          title: 'ANTHROPIC_API_KEY 陷阱',
+          title: '第 3 步：检查 ANTHROPIC_API_KEY 陷阱',
           body:
             '登录「留不住」最常见的原因，是 shell 配置里设了 ANTHROPIC_API_KEY 环境变量。Claude Code 会优先用 API Key 而不是你的订阅登录，而这个按量计费的 Key 可能已过期、撞了限额或权限不同——于是表现为鉴权错误，尽管你的订阅其实没问题。\n\n检查一下：`echo $ANTHROPIC_API_KEY`（macOS/Linux）或 `echo %ANTHROPIC_API_KEY%`（Windows）。如果它被设了、而你本想用 Pro/Max 订阅，就从 shell 配置（~/.zshrc、~/.bashrc 或 Windows 环境变量）里删掉它，重启终端后再 /login。',
         },
         {
-          title: '最后手段：删除凭证文件',
+          title: '第 4 步：最后再清理凭证文件',
           body:
             '如果 /logout → /login 仍然反复，说明保存的凭证损坏了——可能是写了一半的 ~/.claude/.credentials.json，或 macOS 钥匙串里被锁定、不可写的条目。关闭 Claude Code，删除 ~/.claude/.credentials.json，重新打开并运行 /login 从头登录。在 macOS 上你可能还需要在「钥匙串访问」里删掉「Claude Code」条目。\n\n这个文件里是实时凭证：像对待密码文件一样对待它，绝不要把它的内容贴进聊天或截图。',
         },
         {
-          title: '先确认你的会话到底还活着没',
+          title: '第 5 步：确认 Claude 会话是否仍有效',
           body:
             '在花时间修复之前，先弄清底层的 claude.ai 会话是否还有效——也就是 Claude Code 登录的同一个账号。导出你的 claude.ai 会话 Cookie，用下方的检测跑一下：几秒内就能知道会话是否有效、是什么套餐、5 小时和每周限额还剩多少，从而把「会话过期」和「撞了用量限额」区分开。',
         },
@@ -735,8 +735,8 @@ export const zh: Dictionary = {
     claudeUsage: {
       title: 'Claude 限流与用量：5 小时和每周窗口何时重置',
       intro:
-        'Claude Pro 和 Max 用两个不同的窗口限制用量，而毫无缘由地看到「Claude usage limit reached」是最常见的困扰之一。下面讲清两个限制到底怎么运作、为什么共享额度比你以为的掉得快，以及各自何时重置。',
-      updated: '2026-09-19',
+        'Claude Pro 和 Max 用两个不同的窗口限制用量，而毫无缘由地看到「Claude usage limit reached」是最常见的困扰之一。下面讲清 5 小时限额、每周额度、峰值时段和各套餐的区别。',
+      updated: '2026-09-20',
       readMinutes: 8,
       sections: [
         {
@@ -760,11 +760,25 @@ export const zh: Dictionary = {
             '套餐的主要差别在于这些窗口有多大。Pro（$20/月）面向日常对话和轻量编码。Max 的 5× 和 20× 把额度成倍放大，面向密集的 Claude Code 使用。因为所有东西共享一个额度，实际要问的不是「哪个应用」，而是「总共用了多少、用的哪个模型」——Claude Code 里的 /cost 命令会显示当前会话的花费。',
         },
         {
+          title: 'Claude 峰值时段政策与非高峰时段',
+          body:
+            '当前 Claude 的峰值时段政策与早期「工作日降低额度」的报道不同。Anthropic 在 2026 年 5 月 6 日宣布：Pro 和 Max 的 Claude Code 不再降低峰值时段限额，并把 Claude Code 的 5 小时限额提高了一倍。因此，对这些 Claude Code 套餐来说，把重活留到非高峰时段的旧建议只是历史背景，并不是今天保证有效的倍数。\n\n实际额度仍可能因套餐、模型、产品入口和账号状态变化。请以 Claude 账户里的 Usage 页面为准，不要只按时钟承诺固定消息数。',
+        },
+        {
           title: '现在就看看你自己的用量',
           body:
             '真正重要的是你自己的数字，而看它们并不需要打开 claude.ai。导出你的 claude.ai 会话 Cookie，用下方的检测跑一下——它会显示你的套餐，以及 5 小时和每周窗口各用了多少、何时重置。这是判断你到底是撞了限额还是只是遇到临时错误的最快方式。',
         },
       ],
+      comparisonTable: {
+        caption: '套餐速览：额度是动态的，账户 Usage 页面优先',
+        headers: ['套餐', '5 小时用量', '每周用量', '实际提示'],
+        rows: [
+          ['Free', '有限、动态的额度', '按套餐而定，可能变化', '请在 Usage 页面查看当前额度。'],
+          ['Pro', '每个会话至少为 Free 的 5 倍；取决于模型和 token', '账户显示固定的每周上限', '适合日常对话和较轻的编码工作。'],
+          ['Max', 'Pro 的 5 倍或 20 倍，取决于等级', '账户显示更高的每周上限', '面向更重的 Claude 与 Claude Code 工作负载。'],
+        ],
+      },
       faqTitle: 'Claude 用量限制 — 常见问题',
       faq: [
         {

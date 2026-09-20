@@ -18,6 +18,12 @@ export interface GuideContent {
   updated: string
   readMinutes: number
   sections: { title: string; body: string }[]
+  /** Optional comparison table used by guides that have plan-specific data. */
+  comparisonTable?: {
+    caption: string
+    headers: string[]
+    rows: string[][]
+  }
   faqTitle: string
   faq: { q: string; a: string }[]
   sourcesTitle: string
@@ -130,6 +136,38 @@ export function GuidePage({
                 </section>
               </Reveal>
             ))}
+
+            {guide.comparisonTable && (
+              <Reveal>
+                <div className="mt-10 overflow-x-auto rounded-large border border-line">
+                  <table className="min-w-full border-collapse text-left font-sans text-detail-s text-ink-secondary">
+                    <caption className="border-b border-line bg-bg-secondary px-4 py-3 text-left font-semibold text-ink">
+                      {guide.comparisonTable.caption}
+                    </caption>
+                    <thead className="bg-bg-secondary">
+                      <tr>
+                        {guide.comparisonTable.headers.map((header) => (
+                          <th key={header} className="border-b border-line px-4 py-3 font-semibold text-ink">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {guide.comparisonTable.rows.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="border-b border-line last:border-b-0">
+                          {row.map((cell, cellIndex) => (
+                            <td key={cellIndex} className="px-4 py-3 align-top">
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Reveal>
+            )}
 
             <Reveal>
               <section id={sourcesId} className="mt-12 scroll-mt-28 border-t border-line pt-8">
